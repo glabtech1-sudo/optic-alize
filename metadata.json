@@ -1,0 +1,6 @@
+{
+  "name": "Optic Alizé ERP SaaS Architecture",
+  "description": "SaaS Enterprise Resource Planning (ERP) platform blueprint and interactive architecture for managing optical chains, accounting, and Human Resources (Flutter, Riverpod, Clean Architecture, Express, PostgreSQL, Supabase, WebSockets).",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

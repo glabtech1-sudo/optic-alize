@@ -1,0 +1,25 @@
+{
+  "short_name": "Optic Alize",
+  "name": "Optic Alizé - Gestion d'Optique & SaaS",
+  "description": "Système de gestion haute performance pour magasins d'optique, ateliers et cliniques visuelles.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0097a7",
+  "display": "standalone",
+  "orientation": "any",
+  "categories": ["business", "productivity", "utilities"]
+}

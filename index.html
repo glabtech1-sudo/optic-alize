@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Optic Alizé</title>
+    <script>
+      // Gracefully trap and silence masked, benign cross-origin and sandbox-induced "Script error." events
+      window.onerror = function (message, source, lineno, colno, error) {
+        var msg = String(message || '');
+        if (!message || msg === 'Script error.' || msg === 'Script error' || msg.indexOf('Script error') !== -1 || !source) {
+          console.warn("Muffled cross-origin/sandbox error via window.onerror:", message);
+          return true; // Prevents default browser logging & reporting
+        }
+        return false;
+      };
+
+      window.addEventListener('error', function(event) {
+        var msg = String(event.message || '');
+        if (!event.message || msg === 'Script error.' || msg === 'Script error' || msg.indexOf('Script error') !== -1 || !event.filename) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+          return true;
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function(event) {
+        var msg = event.reason && (event.reason.message || event.reason);
+        if (msg) {
+          var msgStr = String(msg);
+          if (msgStr === 'Script error.' || msgStr === 'Script error' || msgStr.indexOf('Script error') !== -1) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }
+      }, true);
+    </script>
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0097a7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Optic Alizé" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
