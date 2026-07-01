@@ -110,6 +110,8 @@ export default function SaaSOrders({
   currentCompany,
   isOffline = false
 }: SaaSOrdersProps) {
+  const currentShop = currentCompany?.name || "Optic Alizé - Dépôt Central";
+  const currentCashier = "M. Diallo (Caisse Globale Unifiée)";
   
   // Tab layout aligns strictly: caisse; sav; historique
   const [activeSubTab, setActiveSubTab] = useState<'caisse' | 'sav' | 'history'>('caisse');
@@ -118,89 +120,123 @@ export default function SaaSOrders({
   const [notification, setNotification] = useState<string | null>(null);
 
   // Sales History List State (preset with historic sales in FCFA)
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem('optic_saas_orders');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
+  const [orders, setOrders] = useState<Order[]>([]);
 
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
+  // Catalog State - Empty by default as requested by user ("vider tout les 18 articles")
+  const [catalog, setCatalog] = useState<FusedProduct[]>([]);
+
+  // Load orders and catalog per boutique when currentShop changes
+  React.useEffect(() => {
+    const orderKey = `optic_saas_orders_${currentShop}`;
+    const savedOrders = localStorage.getItem(orderKey);
+    if (savedOrders) {
+      try {
+        const parsed = JSON.parse(savedOrders);
+        if (Array.isArray(parsed)) {
+          setOrders(parsed);
+          return;
+        }
+      } catch (e) {}
     }
 
-    return [
-      { 
-        id: 'ORD-9842', 
-        customer: 'Hélène Dubois-Chambery', 
-        customerBirthDate: '1974-05-12',
-        date: '2026-06-11', 
-        time: '09:20:15',
-        itemCount: 2, 
-        total: 244000, 
-        discountAmount: 15000,
-        paymentMethod: 'Carte Bancaire / MOMO', 
-        shop: 'G-LAB Caisse Unifiée',
-        cashier: 'M. Diallo (Gérant principal)',
-        items: [
-          { id: 'FC-101', name: 'Ray-Ban Wayfarer Classic (RB2140)', brand: 'Luxottica', priceFCFA: 104000, qty: 1, eyeSide: 'NONE', discountPercent: 0 },
-          { id: 'FC-102', name: 'Essilor Varilux Physio Eye-Protect', brand: 'Essilor', priceFCFA: 140000, qty: 1, eyeSide: 'BOTH', discountPercent: 0 }
-        ],
-        status: 'Paid',
-        paidAmount: 244000,
-        balanceRemaining: 0
-      },
-      { 
-        id: 'ORD-9841', 
-        customer: 'Awa Niang', 
-        customerBirthDate: '1993-02-28',
-        date: '2026-06-11', 
-        time: '08:45:00',
-        itemCount: 1, 
-        total: 123000, 
-        discountAmount: 0,
-        paymentMethod: 'MOMO / Wave', 
-        shop: 'G-LAB Caisse Unifiée',
-        cashier: 'M. Diallo (Gérant principal)',
-        items: [
-          { id: 'FC-103', name: 'Oakley Holbrook Sport polarized', brand: 'Luxottica', priceFCFA: 123000, qty: 1, eyeSide: 'NONE', discountPercent: 0 }
-        ],
-        status: 'Paid',
-        paidAmount: 123000,
-        balanceRemaining: 0
-      },
-      { 
-        id: 'ORD-9840', 
-        customer: 'Jean-Pierre Gomez-Viguier', 
-        customerBirthDate: '1961-11-20',
-        date: '2026-06-10', 
-        time: '16:04:11',
-        itemCount: 1, 
-        total: 95000, 
-        discountAmount: 10000,
-        paymentMethod: 'Espèces', 
-        shop: 'G-LAB Caisse Unifiée',
-        cashier: 'M. Diallo (Gérant principal)',
-        items: [
-          { id: 'FC-105', name: 'Zeiss SmartLife progressive Platinum', brand: 'Zeiss', priceFCFA: 95000, qty: 1, eyeSide: 'BOTH', discountPercent: 10 }
-        ],
-        status: 'Paid',
-        paidAmount: 95000,
-        balanceRemaining: 0
-      }
-    ];
-  });
+    // Preseeded orders for central boutique, empty for new ones!
+    if (currentShop === "Optic Alizé - Dépôt Central" && localStorage.getItem('optic_system_factory_reset') !== 'true') {
+      const defaults: Order[] = [
+        { 
+          id: 'ORD-9842', 
+          customer: 'Hélène Dubois-Chambery', 
+          customerBirthDate: '1974-05-12',
+          date: '2026-06-11', 
+          time: '09:20:15',
+          itemCount: 2, 
+          total: 244000, 
+          discountAmount: 15000,
+          paymentMethod: 'Carte Bancaire / MOMO', 
+          shop: 'Optic Alizé - Dépôt Central',
+          cashier: 'M. Diallo (Gérant principal)',
+          items: [
+            { id: 'FC-101', name: 'Ray-Ban Wayfarer Classic (RB2140)', brand: 'Luxottica', priceFCFA: 104000, qty: 1, eyeSide: 'NONE', discountPercent: 0 },
+            { id: 'FC-102', name: 'Essilor Varilux Physio Eye-Protect', brand: 'Essilor', priceFCFA: 140000, qty: 1, eyeSide: 'BOTH', discountPercent: 0 }
+          ],
+          status: 'Paid',
+          paidAmount: 244000,
+          balanceRemaining: 0
+        },
+        { 
+          id: 'ORD-9841', 
+          customer: 'Awa Niang', 
+          customerBirthDate: '1993-02-28',
+          date: '2026-06-11', 
+          time: '08:45:00',
+          itemCount: 1, 
+          total: 123000, 
+          discountAmount: 0,
+          paymentMethod: 'MOMO / Wave', 
+          shop: 'Optic Alizé - Dépôt Central',
+          cashier: 'M. Diallo (Gérant principal)',
+          items: [
+            { id: 'FC-103', name: 'Oakley Holbrook Sport polarized', brand: 'Luxottica', priceFCFA: 123000, qty: 1, eyeSide: 'NONE', discountPercent: 0 }
+          ],
+          status: 'Paid',
+          paidAmount: 123000,
+          balanceRemaining: 0
+        },
+        { 
+          id: 'ORD-9840', 
+          customer: 'Jean-Pierre Gomez-Viguier', 
+          customerBirthDate: '1961-11-20',
+          date: '2026-06-10', 
+          time: '16:04:11',
+          itemCount: 1, 
+          total: 95000, 
+          discountAmount: 10000,
+          paymentMethod: 'Espèces', 
+          shop: 'Optic Alizé - Dépôt Central',
+          cashier: 'M. Diallo (Gérant principal)',
+          items: [
+            { id: 'FC-105', name: 'Zeiss SmartLife progressive Platinum', brand: 'Zeiss', priceFCFA: 95000, qty: 1, eyeSide: 'BOTH', discountPercent: 10 }
+          ],
+          status: 'Paid',
+          paidAmount: 95000,
+          balanceRemaining: 0
+        }
+      ];
+      setOrders(defaults);
+      localStorage.setItem(orderKey, JSON.stringify(defaults));
+    } else {
+      setOrders([]);
+    }
+  }, [currentShop]);
 
   React.useEffect(() => {
-    localStorage.setItem('optic_saas_orders', JSON.stringify(orders));
-  }, [orders]);
+    const catalogKey = `optic_fused_catalog_${currentShop}`;
+    const savedCatalog = localStorage.getItem(catalogKey);
+    if (savedCatalog) {
+      try {
+        const parsed = JSON.parse(savedCatalog);
+        if (Array.isArray(parsed)) {
+          setCatalog(parsed);
+          return;
+        }
+      } catch (e) {}
+    }
+    setCatalog([]);
+  }, [currentShop]);
+
+  React.useEffect(() => {
+    if (orders.length > 0 || localStorage.getItem(`optic_saas_orders_${currentShop}`)) {
+      localStorage.setItem(`optic_saas_orders_${currentShop}`, JSON.stringify(orders));
+    }
+  }, [orders, currentShop]);
+
+  React.useEffect(() => {
+    localStorage.setItem(`optic_fused_catalog_${currentShop}`, JSON.stringify(catalog));
+  }, [catalog, currentShop]);
 
   React.useEffect(() => {
     const handleSync = () => {
       try {
-        const saved = localStorage.getItem('optic_saas_orders');
+        const saved = localStorage.getItem(`optic_saas_orders_${currentShop}`);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
@@ -213,28 +249,12 @@ export default function SaaSOrders({
     };
     window.addEventListener('storage', handleSync);
     return () => window.removeEventListener('storage', handleSync);
-  }, []);
+  }, [currentShop]);
 
   // Unified Scanner & Search State
   const [productSearchQuery, setProductSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<'Tous' | 'Montures' | 'Verres' | 'Accessoires'>('Tous');
   const [barcodeInput, setBarcodeInput] = useState<string>('');
-
-  // Catalog State - Empty by default as requested by user ("vider tout les 18 articles")
-  const [catalog, setCatalog] = useState<FusedProduct[]>(() => {
-    const saved = localStorage.getItem('optic_fused_catalog');
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return []; // Start empty
-  });
-
-  useEffect(() => {
-    localStorage.setItem('optic_fused_catalog', JSON.stringify(catalog));
-  }, [catalog]);
 
   // Form states to add custom products to the POS catalog
   const [showAddForm, setShowAddForm] = useState(false);
@@ -300,8 +320,7 @@ export default function SaaSOrders({
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<Order | null>(null);
 
   // Active cashier detail (Unified shop metadata)
-  const currentCashier = "M. Diallo (Caisse Globale Unifiée)";
-  const currentShop = "Optic Alizé Caisse Unifiée";
+  // Already defined dynamically at the top of the component
 
   // --- SOUND BEEPER SYNTHESIZER ---
   const playBeep = () => {

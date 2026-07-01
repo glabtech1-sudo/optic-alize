@@ -1092,7 +1092,7 @@ export default function POSModule() {
                             </span>
                           )}
                         </div>
-                        <h5 className="text-xs font-semibold text-slate-800 line-clamp-1">{item.text_color_override || item.product.name}</h5>
+                        <h5 className="text-xs font-semibold text-slate-800 line-clamp-1">{item.product.name}</h5>
                       </div>
                       
                       {/* Delete item button */}

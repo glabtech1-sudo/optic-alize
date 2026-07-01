@@ -20,6 +20,8 @@ import {
   CheckCircle2, 
   Layers, 
   Lock, 
+  LockOpen,
+  ShieldCheck,
   VolumeX, 
   FileText, 
   X,
@@ -99,14 +101,15 @@ const PRESET_ATTACHMENTS: QuickAttachment[] = [
 ];
 
 interface WebSocketSimulatorProps {
-  mode?: 'messenger' | 'riverpod' | 'logs';
+  mode?: 'messenger' | 'riverpod' | 'logs' | 'collaborative';
 }
 
 export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimulatorProps) {
   const [currentUser, setCurrentUser] = useState(PRESET_USERS[0]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'blueprints' | 'broker_logs'>(() => {
+  const [activeTab, setActiveTab] = useState<'chat' | 'collaborative' | 'blueprints' | 'broker_logs'>(() => {
     if (mode === 'riverpod') return 'blueprints';
     if (mode === 'logs') return 'broker_logs';
+    if (mode === 'collaborative') return 'collaborative';
     return 'chat';
   });
 
@@ -212,6 +215,119 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
 
   // Max 1MB size checking with custom warning modal/toast
   const [fileLimitWarning, setFileLimitWarning] = useState<string | null>(null);
+
+  // Real-time clinical fiches with local state, synchronizing live over WebSocket
+  const [patientRecords, setPatientRecords] = useState([
+    { id: 'pat-1', name: 'KOFFI Konan (Ordonnance #2045)', sphereOD: '-1.25', cylinderOD: '+0.50', axeOD: '90', sphereOG: '-1.00', cylinderOG: '+0.25', axeOG: '85', lockedBy: null as string | null, holderName: null as string | null },
+    { id: 'pat-2', name: 'DIAW Fatou (Dossier Clinique #3019)', sphereOD: '+2.00', cylinderOD: '+0.75', axeOD: '180', sphereOG: '+2.25', cylinderOG: '+0.50', axeOG: '175', lockedBy: null as string | null, holderName: null as string | null },
+    { id: 'pat-3', name: 'NDIATE Omar (Bilan Réfractif #1092)', sphereOD: '-0.50', cylinderOD: '0.00', axeOD: '0', sphereOG: '-0.75', cylinderOG: '0.00', axeOG: '0', lockedBy: null as string | null, holderName: null as string | null }
+  ]);
+
+  // Conflict Simulation States
+  const [activeConflict, setActiveConflict] = useState<{
+    isOpen: boolean;
+    patientId: string;
+    fieldName: string;
+    myValue: string;
+    otherUser: string;
+    otherValue: string;
+  } | null>(null);
+
+  const [conflictLogs, setConflictLogs] = useState<{ id: string; time: string; text: string }[]>([]);
+
+  const triggerConflictSimulation = (patientId: string) => {
+    const record = patientRecords.find(r => r.id === patientId);
+    if (!record) return;
+    setActiveConflict({
+      isOpen: true,
+      patientId,
+      fieldName: 'sphereOD',
+      myValue: record.sphereOD,
+      otherUser: 'Marc (Boutique Dakar Plateaux)',
+      otherValue: '-3.75'
+    });
+  };
+
+  const acquireLock = (patientId: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'lock_acquire',
+        documentId: patientId,
+        username: currentUser.username
+      }));
+    } else {
+      // Simulate local lock if WS is off
+      setPatientRecords(prev => prev.map(p => p.id === patientId ? { ...p, lockedBy: currentUser.id, holderName: currentUser.username } : p));
+      addToast("✓ Verrou obtenu", `Simulation de verrou local activée pour ${patientId}.`);
+    }
+  };
+
+  const releaseLock = (patientId: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'lock_release',
+        documentId: patientId
+      }));
+    } else {
+      // Simulate local unlock if WS is off
+      setPatientRecords(prev => prev.map(p => p.id === patientId ? { ...p, lockedBy: null, holderName: null } : p));
+      addToast("🔓 Verrou libéré", "Le document est à présent disponible pour modification.");
+    }
+  };
+
+  const handleFieldChange = (patientId: string, fieldName: string, value: string) => {
+    // 1. Update local state
+    setPatientRecords(prev => prev.map(p => p.id === patientId ? { ...p, [fieldName]: value } : p));
+    
+    // 2. Broadcast change over WebSocket
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'sync_change',
+        documentId: patientId,
+        fieldName,
+        fieldValue: value,
+        username: currentUser.username
+      }));
+    }
+  };
+
+  const resolveConflict = (resolution: 'keep_mine' | 'keep_theirs' | 'merge') => {
+    if (!activeConflict) return;
+    
+    let resolvedValue = activeConflict.myValue;
+    let logText = '';
+    
+    if (resolution === 'keep_theirs') {
+      resolvedValue = activeConflict.otherValue;
+      logText = `Conflit résolu pour ${activeConflict.patientId}: Conserver la valeur de l'autre opticien (${activeConflict.otherValue})`;
+    } else if (resolution === 'keep_mine') {
+      resolvedValue = activeConflict.myValue;
+      logText = `Conflit résolu pour ${activeConflict.patientId}: Conserver votre valeur (${activeConflict.myValue})`;
+    } else {
+      resolvedValue = `${activeConflict.myValue} / ${activeConflict.otherValue}`;
+      logText = `Conflit résolu pour ${activeConflict.patientId}: Fusion manuelle bilatérale (${resolvedValue})`;
+    }
+
+    setPatientRecords(prev => prev.map(p => p.id === activeConflict.patientId ? { ...p, [activeConflict.fieldName]: resolvedValue } : p));
+    setConflictLogs(prev => [{ id: `conf-${Date.now()}`, time: new Date().toLocaleTimeString(), text: logText }, ...prev]);
+    addToast("✓ Conflit Résolu", logText);
+    setActiveConflict(null);
+
+    // Save conflict resolution audit log on the server if possible
+    fetch('/api/audit_logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('optic_access_token')}`
+      },
+      body: JSON.stringify({
+        action: 'CONFLIT_SYNCHRONISATION_TEMPS_REEL_RESOLU',
+        details: logText,
+        ipAddress: '127.0.0.1',
+        userAgent: 'Browser Client - Real-Time Core'
+      })
+    }).catch(err => console.error('Audit log failed:', err));
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -363,6 +479,30 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
             case 'notification': {
               addToast(data.notification.title, data.notification.message);
               addLog(`Alerte Broadcast: ${data.notification.title} - ${data.notification.message}`);
+              break;
+            }
+            case 'lock_granted': {
+              setPatientRecords(prev => prev.map(p => p.id === data.documentId ? { ...p, lockedBy: currentUser.id, holderName: currentUser.username } : p));
+              addToast("✓ Verrou obtenu", `Vous avez verrouillé l'édition pour ${data.documentId === 'pat-1' ? 'KOFFI Konan' : data.documentId === 'pat-2' ? 'DIAW Fatou' : 'NDIATE Omar'}.`);
+              break;
+            }
+            case 'lock_denied': {
+              setPatientRecords(prev => prev.map(p => p.id === data.documentId ? { ...p, lockedBy: 'other', holderName: data.holderName } : p));
+              addToast("🔒 Accès Verrouillé", `Fiche en cours de modification par ${data.holderName}.`);
+              break;
+            }
+            case 'document_locked': {
+              setPatientRecords(prev => prev.map(p => p.id === data.documentId ? { ...p, lockedBy: data.holderId, holderName: data.holderName } : p));
+              addToast("🔒 Fiche Verrouillée", `Le collaborateur ${data.holderName} a commencé à modifier ${data.documentId === 'pat-1' ? 'KOFFI Konan' : data.documentId === 'pat-2' ? 'DIAW Fatou' : 'NDIATE Omar'}.`);
+              break;
+            }
+            case 'document_unlocked': {
+              setPatientRecords(prev => prev.map(p => p.id === data.documentId ? { ...p, lockedBy: null, holderName: null } : p));
+              addToast("🔓 Fiche Libérée", `La fiche patient est désormais disponible pour édition.`);
+              break;
+            }
+            case 'live_field_update': {
+              setPatientRecords(prev => prev.map(p => p.id === data.documentId ? { ...p, [data.fieldName]: data.fieldValue } : p));
               break;
             }
             default:
@@ -1548,6 +1688,333 @@ class ChatNotifier extends StateNotifier<List<MessageEntity>> {
           <div className="bg-slate-900/40 p-3 border-t border-slate-850 text-slate-500 text-[10px] uppercase font-mono">
             <span>Broker Server URL : {window.location.protocol === 'https:' ? 'wss' : 'ws'}://{window.location.host}/api/ws</span>
           </div>
+        </div>
+      )}
+
+      {/* REAL-TIME COLLABORATIVE EDITING WORKSPACE */}
+      {(mode === 'collaborative' || activeTab === 'collaborative') && (
+        <div className="space-y-6 text-left">
+          
+          {/* Conflict Resolution Modal Overlay */}
+          {activeConflict?.isOpen && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden"
+              >
+                <div className="bg-rose-600 px-6 py-4 text-white flex items-center gap-3">
+                  <AlertCircle className="w-6 h-6 animate-bounce" />
+                  <div>
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Conflit Temps Réel Détecté</h3>
+                    <p className="text-[11px] opacity-90">Deux opticiens ont modifié simultanément la même fiche clinique.</p>
+                  </div>
+                </div>
+                
+                <div className="p-6 space-y-4 font-sans">
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-150 space-y-1">
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Fiche Patient en conflit :</p>
+                    <p className="text-xs font-bold text-slate-800">
+                      {activeConflict.patientId === 'pat-1' ? 'KOFFI Konan' : activeConflict.patientId === 'pat-2' ? 'DIAW Fatou' : 'NDIATE Omar'} ({activeConflict.fieldName})
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="border border-emerald-200 bg-emerald-50/50 p-4 rounded-xl space-y-2">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Votre Modification</span>
+                      <p className="text-2xl font-black text-emerald-900">{activeConflict.myValue || 'Vide'}</p>
+                      <span className="text-[10px] text-emerald-600 block font-medium">Boutique Locale (Vous)</span>
+                    </div>
+
+                    <div className="border border-amber-200 bg-amber-50/50 p-4 rounded-xl space-y-2">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">{activeConflict.otherUser}</span>
+                      <p className="text-2xl font-black text-amber-900">{activeConflict.otherValue}</p>
+                      <span className="text-[10px] text-amber-600 block font-medium">Synchronisation Distante</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500 leading-relaxed text-center italic">
+                    Pour garantir l'intégrité clinique du dossier médical de réfraction, veuillez choisir la politique de résolution de conflit :
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 px-6 py-4 border-t border-slate-150 flex flex-col sm:flex-row gap-2.5 justify-end">
+                  <button
+                    onClick={() => resolveConflict('keep_theirs')}
+                    className="px-4 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition shadow-sm cursor-pointer"
+                  >
+                    Conserver l'autre valeur ({activeConflict.otherValue})
+                  </button>
+                  <button
+                    onClick={() => resolveConflict('keep_mine')}
+                    className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-sm cursor-pointer"
+                  >
+                    Conserver ma valeur ({activeConflict.myValue})
+                  </button>
+                  <button
+                    onClick={() => resolveConflict('merge')}
+                    className="px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition shadow-sm cursor-pointer"
+                  >
+                    Fusionner les deux
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {/* Heading Section */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-3 font-sans">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+                <ShieldCheck className="w-5 h-5 animate-pulse" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 tracking-tight">Espace d'Édition Collaborative & Verrous</h3>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Pour éviter qu'un opticien n'écrase par erreur l'ordonnance d'un patient ouverte dans une autre boutique, le système utilise un **verrouillage d'édition dynamique par WebSocket**. Un seul collaborateur peut détenir le verrou d'édition d'une fiche à la fois. Les autres collaborateurs voient les frappes de touches en temps réel mais ne peuvent pas modifier les valeurs tant que la fiche est verrouillée.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
+            
+            {/* Left Column: Patient Records list with status */}
+            <div className="lg:col-span-5 space-y-4">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block px-1">Dossiers Médicaux Cliniques</span>
+              
+              <div className="space-y-3">
+                {patientRecords.map((record) => {
+                  const isLockedByMe = record.lockedBy === currentUser.id;
+                  const isLockedByOther = record.lockedBy && record.lockedBy !== currentUser.id;
+                  const isFree = !record.lockedBy;
+
+                  return (
+                    <div 
+                      key={record.id} 
+                      className={`p-4 rounded-xl border transition shadow-sm bg-white flex flex-col justify-between gap-3 ${
+                        isLockedByMe ? 'border-emerald-500 bg-emerald-50/10' : 
+                        isLockedByOther ? 'border-amber-300 bg-amber-50/10' : 'border-slate-150'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <h4 className="text-xs font-bold text-slate-800">{record.name}</h4>
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            {isFree && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 uppercase">
+                                <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-ping"></span>
+                                Libre pour modification
+                              </span>
+                            )}
+                            {isLockedByMe && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase">
+                                <LockOpen className="w-2.5 h-2.5" />
+                                Vous détenez le verrou
+                              </span>
+                            )}
+                            {isLockedByOther && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 uppercase">
+                                <Lock className="w-2.5 h-2.5" />
+                                Bloqué par {record.holderName}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Interactive simulation of conflict */}
+                        <button
+                          onClick={() => triggerConflictSimulation(record.id)}
+                          className="text-[9px] font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded cursor-pointer transition select-none"
+                          title="Simuler un conflit d'édition temps réel"
+                        >
+                          Simuler Conflit
+                        </button>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2 border-t border-slate-100 pt-3 mt-1 justify-end">
+                        {isFree && (
+                          <button
+                            onClick={() => acquireLock(record.id)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer select-none"
+                          >
+                            <Lock className="w-3 h-3" />
+                            Prendre le verrou
+                          </button>
+                        )}
+                        {isLockedByMe && (
+                          <button
+                            onClick={() => releaseLock(record.id)}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer select-none"
+                          >
+                            <LockOpen className="w-3 h-3" />
+                            Libérer le verrou
+                          </button>
+                        )}
+                        {isLockedByOther && (
+                          <span className="text-[10px] text-slate-400 italic font-medium">
+                            🔒 Non modifiable
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Conflict Log list */}
+              <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
+                <span className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-widest block">Audit Log des Conflits de Synchronisation</span>
+                <div className="space-y-2 max-h-[160px] overflow-y-auto custom-scrollbar">
+                  {conflictLogs.length === 0 ? (
+                    <p className="text-[10px] text-slate-500 font-mono italic">Aucun conflit détecté sur cette session.</p>
+                  ) : (
+                    conflictLogs.map(log => (
+                      <div key={log.id} className="text-[10px] font-mono text-slate-350 flex gap-2">
+                        <span className="text-emerald-400">[{log.time}]</span>
+                        <p>{log.text}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Right Column: Interactive refraction card */}
+            <div className="lg:col-span-7">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block px-1 mb-4">Fiche d'Examen Réfraction Visuelle Active</span>
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800">Formulaire de Prescription Clinique</h4>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Saisissez les dioptries. S'enregistre et se synchronise en temps réel.</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span className="text-[9px] font-mono text-slate-500 uppercase font-bold">Réseau d'Échanges Actif</span>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {patientRecords.map((record) => {
+                    const isLockedByMe = record.lockedBy === currentUser.id;
+                    const isLockedByOther = record.lockedBy && record.lockedBy !== currentUser.id;
+                    const isEditable = isLockedByMe;
+
+                    return (
+                      <div key={record.id} className="space-y-3 border-b border-slate-100 pb-5 last:border-b-0 last:pb-0">
+                        <div className="flex justify-between items-center bg-slate-50/50 p-2 rounded-lg">
+                          <span className="text-xs font-bold text-slate-700">{record.name}</span>
+                          {isLockedByOther ? (
+                            <span className="text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1 uppercase">
+                              <Lock className="w-2.5 h-2.5" />
+                              Verrouillé par {record.holderName}
+                            </span>
+                          ) : isLockedByMe ? (
+                            <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1 uppercase">
+                              <LockOpen className="w-2.5 h-2.5" />
+                              Modifiable par vous
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1 uppercase">
+                              Verrou requis pour éditer
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="relative">
+                          {isLockedByOther && (
+                            <div className="absolute inset-0 bg-slate-100/40 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-xl">
+                              <div className="bg-white/95 px-4 py-2 rounded-xl shadow-lg border border-slate-150 flex items-center gap-2">
+                                <Lock className="w-4 h-4 text-amber-600 animate-bounce" />
+                                <span className="text-xs font-bold text-slate-700">🔒 En cours d'édition par {record.holderName}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className={`grid grid-cols-2 gap-4 ${!isEditable ? 'opacity-60 pointer-events-none' : ''}`}>
+                            
+                            {/* Oeil Droit (OD) */}
+                            <div className="bg-slate-50/40 p-3 rounded-xl border border-slate-150 space-y-3">
+                              <span className="text-[9px] font-black text-blue-800 uppercase tracking-wider block">Œil Droit (OD)</span>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Sphère</label>
+                                  <input 
+                                    type="text" 
+                                    value={record.sphereOD} 
+                                    onChange={(e) => handleFieldChange(record.id, 'sphereOD', e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded p-1 text-center text-xs font-bold focus:outline-emerald-500"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Cylindre</label>
+                                  <input 
+                                    type="text" 
+                                    value={record.cylinderOD} 
+                                    onChange={(e) => handleFieldChange(record.id, 'cylinderOD', e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded p-1 text-center text-xs font-bold focus:outline-emerald-500"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Axe</label>
+                                  <input 
+                                    type="text" 
+                                    value={record.axeOD} 
+                                    onChange={(e) => handleFieldChange(record.id, 'axeOD', e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded p-1 text-center text-xs font-bold focus:outline-emerald-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Oeil Gauche (OG) */}
+                            <div className="bg-slate-50/40 p-3 rounded-xl border border-slate-150 space-y-3">
+                              <span className="text-[9px] font-black text-rose-800 uppercase tracking-wider block">Œil Gauche (OG)</span>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Sphère</label>
+                                  <input 
+                                    type="text" 
+                                    value={record.sphereOG} 
+                                    onChange={(e) => handleFieldChange(record.id, 'sphereOG', e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded p-1 text-center text-xs font-bold focus:outline-emerald-500"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Cylindre</label>
+                                  <input 
+                                    type="text" 
+                                    value={record.cylinderOG} 
+                                    onChange={(e) => handleFieldChange(record.id, 'cylinderOG', e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded p-1 text-center text-xs font-bold focus:outline-emerald-500"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Axe</label>
+                                  <input 
+                                    type="text" 
+                                    value={record.axeOG} 
+                                    onChange={(e) => handleFieldChange(record.id, 'axeOG', e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded p-1 text-center text-xs font-bold focus:outline-emerald-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
         </div>
       )}
 

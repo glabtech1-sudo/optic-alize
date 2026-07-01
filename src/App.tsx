@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+// @ts-ignore
+import defaultLogo from './assets/images/optic_alize_logo_1781336757710.jpg';
 import { initialArchFiles } from './data/architectureFiles';
 import { extraArchFiles } from './data/extraArchitectureFiles';
 import { ArchFile } from './types/architecture';
 import { preloadLogoAndWatermark } from './utils/logoPreloader';
+import { fetchUsers, logoutUser } from './lib/api';
 
 // Import our gorgeous newly created SaaS Views
 import LoginPage from './components/LoginPage';
@@ -172,7 +175,7 @@ export default function App() {
   );
 
   const [appLogo, setAppLogo] = useState(
-    () => localStorage.getItem('optic_app_logo') || '/src/assets/images/optic_alize_logo_1781336757710.jpg'
+    () => localStorage.getItem('optic_app_logo') || defaultLogo
   );
 
   useEffect(() => {
@@ -192,15 +195,22 @@ export default function App() {
     preloadLogoAndWatermark(appLogo);
   }, [appLogo]);
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      localStorage.setItem('optic_is_authenticated', 'false');
+      setIsAuthenticated(false);
+    };
+    window.addEventListener('optic-unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('optic-unauthorized', handleUnauthorized);
+    };
+  }, []);
+
   const [currentUserEmail, setCurrentUserEmail] = useState<string>(
     () => localStorage.getItem('optic_user_email') || 'glabtech1@opticalize.com'
   );
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const isRemembered = localStorage.getItem('optic_remember_me') === 'true';
-    const wasAuthed = localStorage.getItem('optic_is_authenticated') === 'true';
-    return isRemembered && wasAuthed;
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   // Synced User Database
   const [users, setUsers] = useState<any[]>(() => {
@@ -240,6 +250,15 @@ export default function App() {
     localStorage.setItem('optic_users', JSON.stringify(defaults));
     return defaults;
   });
+
+  useEffect(() => {
+    // Load synced users from PostgreSQL DB (or fallback cache) on startup
+    fetchUsers().then(data => {
+      if (data && data.length > 0) {
+        setUsers(data);
+      }
+    }).catch(err => console.warn("Failed to load PostgreSQL synced users on startup:", err));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('optic_users', JSON.stringify(users));
@@ -500,6 +519,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    logoutUser();
     localStorage.setItem('optic_is_authenticated', 'false');
     setIsAuthenticated(false);
     setIsLoggedOut(false);
@@ -658,6 +678,7 @@ export default function App() {
                     return false;
                   }
                   if (item.id === 'super_admin_monitor' && !isSuperAdmin) return false;
+                  if (item.id === 'settings' && !isSuperAdmin) return false;
                   // Filter strictly based on user permissions
                   const userHasAccess = isSuperAdmin || userAllowedModules.includes(item.id) || item.id === 'settings';
                   // Filter based on boutique's enabled branch_modules
@@ -774,6 +795,7 @@ export default function App() {
                           return false;
                         }
                         if (item.id === 'super_admin_monitor' && !isSuperAdmin) return false;
+                        if (item.id === 'settings' && !isSuperAdmin) return false;
                         const userHasAccess = isSuperAdmin || userAllowedModules.includes(item.id) || item.id === 'settings';
                         const branchHasEnabled = isModuleEnabledForCompany(item.id, currentCompany.id);
                         return userHasAccess && branchHasEnabled;
@@ -977,16 +999,11 @@ export default function App() {
                         </div>
                         <div className="mt-1 space-y-0.5">
                           <button
-                            onClick={() => { setActiveTab('settings'); setShowProfileDropdown(false); }}
-                            className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-lg font-medium cursor-pointer"
-                          >
-                            Éditer mon profil
-                          </button>
-                          <button
                             onClick={handleLogout}
-                            className="w-full text-left px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-lg font-bold cursor-pointer"
+                            className="w-full text-left px-2.5 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg font-bold cursor-pointer flex items-center gap-2"
                           >
-                            Déconnexion
+                            <LogOut className="w-3.5 h-3.5 shrink-0" />
+                            <span>Déconnexion</span>
                           </button>
                         </div>
                       </motion.div>

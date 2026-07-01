@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Shield, User, Database, Key, HelpCircle, Save, Check, AlertCircle, AlertTriangle, Trash2, Users, Globe, RefreshCw, Loader2, Palette, Cloud, Building2, Layers, Code, Zap, Sparkles, Sliders, Terminal, FolderOpen, Smartphone, ShieldCheck, Cpu, HardDrive, Filter, Activity } from 'lucide-react';
 import SaaSUsers from './SaaSUsers';
+import { setupUserMFA, fetchUserProfile } from '../lib/api';
 import SuperAdminHQModule from './SuperAdminHQModule';
 import ArchitectureBlueprint from './ArchitectureBlueprint';
 import CodeWorkspace from './CodeWorkspace';
@@ -50,7 +51,7 @@ export default function SaaSSettings({
   setUsers
 }: SaaSSettingsProps) {
   const [activeSettingsCategory, setActiveSettingsCategory] = useState<string>('profile');
-  const [activeDevSubTab, setActiveDevSubTab] = useState<'blueprint' | 'riverpod' | 'broker_logs' | 'code' | 'database' | 'ai' | 'design_system'>('blueprint');
+  const [activeDevSubTab, setActiveDevSubTab] = useState<'blueprint' | 'riverpod' | 'broker_logs' | 'collaborative' | 'code' | 'database' | 'ai' | 'design_system'>('blueprint');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
   const [showWipeSuccess, setShowWipeSuccess] = useState(false);
@@ -82,7 +83,44 @@ export default function SaaSSettings({
   // Profile forms
   const [profileName, setProfileName] = useState('Optic Alizé ERP Admin');
   const [profileRole, setProfileRole] = useState('Principal Security Architect');
-  const [profileMfa, setProfileMfa] = useState(true);
+  const [profileMfa, setProfileMfa] = useState(false);
+  const [mfaSecretText, setMfaSecretText] = useState<string | null>(null);
+  const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadMfaProfile() {
+      try {
+        const u = await fetchUserProfile();
+        if (u) {
+          setProfileMfa(u.mfaEnabled);
+          setMfaSecretText(u.mfaSecret || null);
+        } else {
+          const profileStr = localStorage.getItem('optic_user_profile');
+          if (profileStr) {
+            const parsed = JSON.parse(profileStr);
+            setProfileMfa(!!parsed.mfaEnabled);
+          }
+        }
+      } catch (err) {}
+    }
+    loadMfaProfile();
+  }, [currentUserEmail]);
+
+  const handleToggleMFA = async () => {
+    const nextState = !profileMfa;
+    setProfileMfa(nextState);
+    const data = await setupUserMFA(nextState);
+    if (data) {
+      if (nextState) {
+        setMfaSecretText(data.secret || null);
+        setMfaQrCode(data.qrCode || null);
+      } else {
+        setMfaSecretText(null);
+        setMfaQrCode(null);
+      }
+    }
+  };
+
   const [boutiqueName, setBoutiqueName] = useState(
     () => localStorage.getItem('optic_boutique_name') || 'Optic Alizé - Dépôt Central'
   );
@@ -448,6 +486,7 @@ export default function SaaSSettings({
                   { id: 'blueprint', label: currentLanguage === 'FR' ? 'Concept Clean Architecture' : 'Clean Architecture Spec', icon: <Layers className="w-3.5 h-3.5" /> },
                   { id: 'riverpod', label: currentLanguage === 'FR' ? 'Architecture Riverpod' : 'Riverpod Architecture Spec', icon: <Code className="w-3.5 h-3.5" /> },
                   { id: 'broker_logs', label: currentLanguage === 'FR' ? 'Logs Réseau d\'Échange' : 'Exchange Network Logs', icon: <Terminal className="w-3.5 h-3.5" /> },
+                  { id: 'collaborative', label: currentLanguage === 'FR' ? 'Édition & Verrous' : 'Cooperative Edit & Locks', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
                   { id: 'database', label: currentLanguage === 'FR' ? 'Explorateur DB' : 'Database Explorer', icon: <Database className="w-3.5 h-3.5" /> },
                   { id: 'code', label: currentLanguage === 'FR' ? 'Code & Workspace' : 'Tree Workspace & Codes', icon: <FolderOpen className="w-3.5 h-3.5" /> },
                   { id: 'ai', label: currentLanguage === 'FR' ? 'Orchestrateur IA' : 'Generative AI Orchestrator', icon: <Sparkles className="w-3.5 h-3.5" /> },
@@ -477,6 +516,7 @@ export default function SaaSSettings({
                 {activeDevSubTab === 'blueprint' && <ArchitectureBlueprint />}
                 {activeDevSubTab === 'riverpod' && <WebSocketSimulator mode="riverpod" />}
                 {activeDevSubTab === 'broker_logs' && <WebSocketSimulator mode="logs" />}
+                {activeDevSubTab === 'collaborative' && <WebSocketSimulator mode="collaborative" />}
                 {activeDevSubTab === 'database' && <DatabaseExplorer />}
                 {activeDevSubTab === 'code' && <CodeWorkspace files={files || []} />}
                 {activeDevSubTab === 'ai' && <AIAssistant onAddGeneratedFiles={onAddGeneratedFiles} />}
@@ -1236,21 +1276,54 @@ export default function SaaSSettings({
                     <hr className="border-slate-100 my-4" />
 
                     {/* Standard double factor toggle */}
-                    <div className="p-4 rounded-xl flex items-center justify-between bg-blue-50/20 border border-blue-105">
-                      <div className="space-y-1 text-left">
-                        <span className="text-xs font-bold block text-slate-800">Double Facteur Authentification MFA par SMS</span>
-                        <p className="text-[10px] text-[#64748B] leading-relaxed">
-                          Exige la résiliation d'une clef de validation OTP par SMS à l'enregistrement du journal d'activité (POS).
-                        </p>
+                    <div className="p-4 rounded-xl space-y-4 bg-emerald-50/25 border border-emerald-100">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1 text-left">
+                          <span className="text-xs font-black block text-slate-900 uppercase tracking-wide">
+                            {currentLanguage === 'FR' ? "Authentification Multi-Facteur (MFA TOTP)" : "Multi-Factor Authentication (MFA TOTP)"}
+                          </span>
+                          <p className="text-[10px] text-[#64748B] leading-relaxed">
+                            {currentLanguage === 'FR'
+                              ? "Exige la saisie d'un code OTP à 6 chiffres généré par une application d'authentification mobile (Google Authenticator, Duo) lors de votre connexion."
+                              : "Enforce a secondary 6-digit verification code generated by an authenticator application (Google Authenticator, Duo) during sign-in."}
+                          </p>
+                        </div>
+                        
+                        <button 
+                          type="button"
+                          onClick={handleToggleMFA}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${profileMfa ? 'bg-emerald-600' : 'bg-slate-200'}`}
+                        >
+                          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${profileMfa ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
                       </div>
-                      
-                      <button 
-                        type="button"
-                        onClick={() => setProfileMfa(!profileMfa)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${profileMfa ? 'bg-[#2563EB]' : 'bg-[#E2E8F0]'}`}
-                      >
-                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${profileMfa ? 'translate-x-5' : 'translate-x-0'}`} />
-                      </button>
+
+                      {profileMfa && mfaSecretText && (
+                        <div className="p-3 bg-white border border-emerald-200 rounded-xl space-y-2 animate-fade-in text-left">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                            <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wide">
+                              {currentLanguage === 'FR' ? "MFA Activé pour votre compte" : "MFA Successfully Enabled"}
+                            </span>
+                          </div>
+                          
+                          <p className="text-[10px] text-slate-550 leading-relaxed font-medium">
+                            {currentLanguage === 'FR'
+                              ? "Pour finaliser la configuration sur votre mobile, scannez le code QR de validation ou entrez manuellement la clef de sécurité suivante dans Google Authenticator :"
+                              : "Scan the configuration QR code or input the following security token in your mobile authenticator client:"}
+                          </p>
+
+                          <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-center select-all font-mono text-xs font-black tracking-widest text-emerald-900">
+                            {mfaSecretText}
+                          </div>
+
+                          <p className="text-[9px] text-slate-400 italic">
+                            {currentLanguage === 'FR'
+                              ? "✓ Les connexions ultérieures exigeront désormais l'authentification double facteur."
+                              : "✓ Future session logins will be protected behind double factor verification."}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

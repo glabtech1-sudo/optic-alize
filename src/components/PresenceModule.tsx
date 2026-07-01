@@ -1196,7 +1196,7 @@ export default function PresenceModule({ currentLanguage, currentCompany, curren
                 <div className="text-[9.5px] text-slate-650 space-y-1 bg-white p-2.5 rounded-lg border border-slate-100 leading-snug">
                   <div className="flex justify-between">
                     <span className="text-slate-400 font-mono text-[8px]">AGENCE :</span>
-                    <span className="font-bold text-slate-755">{identifiedEmployee.branch || selectedBoutique}</span>
+                    <span className="font-bold text-slate-755">{identifiedEmployee.boutique || selectedBoutique}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400 font-mono text-[8px]">DÉPARTEMENT :</span>

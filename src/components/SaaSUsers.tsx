@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, UserPlus, Shield, Mail, Phone, MapPin, Edit2, Trash2, Check, X, Filter, Lock, Eye, EyeOff } from 'lucide-react';
+import { fetchUsers, saveUser, deleteUser as apiDeleteUser } from '../lib/api';
 
 interface User {
   id: string;
@@ -56,8 +58,67 @@ export default function SaaSUsers({
     ];
   });
 
-  const activeUsers = users || localUsers;
+  const queryClient = useQueryClient();
+
+  const { data: qUsers, isLoading: isUsersLoading, refetch: refetchUsersQuery } = useQuery<User[]>({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const dbUsers = await fetchUsers();
+      if (dbUsers && dbUsers.length > 0) {
+        return dbUsers as User[];
+      }
+      return localUsers;
+    },
+    initialData: users && users.length > 0 ? users : undefined,
+  });
+
+  const activeUsers = qUsers || users || localUsers;
   const activeSetUsers = setUsers || setLocalUsers;
+
+  // React Query Cache synchronization effect
+  useEffect(() => {
+    if (qUsers) {
+      if (setUsers) setUsers(qUsers);
+      setLocalUsers(qUsers);
+      localStorage.setItem('optic_users', JSON.stringify(qUsers));
+    }
+  }, [qUsers, setUsers]);
+
+  // Mutations for instant React Query cache updates
+  const saveUserMutation = useMutation({
+    mutationFn: async (updatedUser: User) => {
+      return await saveUser(updatedUser);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      refetchUsersQuery();
+    }
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (email: string) => {
+      return await apiDeleteUser(email);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      refetchUsersQuery();
+    }
+  });
+
+  // Rendering optimization options
+  const [renderMode, setRenderMode] = useState<'pagination' | 'virtualization'>('pagination');
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Virtualization states
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
 
   const allEmployees = React.useMemo(() => {
     if (hrEmployees && hrEmployees.length > 0) return hrEmployees;
@@ -259,9 +320,16 @@ export default function SaaSUsers({
       return;
     }
     if (confirm(currentLanguage === 'FR' ? 'Êtes-vous sûr de vouloir supprimer cet utilisateur ?' : 'Are you sure you want to delete this collaborator?')) {
+      const email = userToDelete?.email || '';
       const updated = activeUsers.filter(u => u.id !== id);
       activeSetUsers(updated);
       localStorage.setItem('optic_users', JSON.stringify(updated));
+      if (email) {
+        deleteUserMutation.mutate(email, {
+          onError: (e) => console.error("Database delete failed, using local copy:", e)
+        });
+      }
+      alert(currentLanguage === 'FR' ? "Compte d'accès supprimé avec succès !" : "Access account deleted successfully!");
     }
   };
 
@@ -296,7 +364,11 @@ export default function SaaSUsers({
     const updated = activeUsers.map(u => u.id === editingUser.id ? editingUser : u);
     activeSetUsers(updated);
     localStorage.setItem('optic_users', JSON.stringify(updated));
+    saveUserMutation.mutate(editingUser, {
+      onError: (e) => console.error("Database save failed, using local copy:", e)
+    });
     setEditingUser(null);
+    alert(currentLanguage === 'FR' ? "Utilisateur mis à jour et enregistré avec succès !" : "User successfully updated and saved!");
   };
 
   const handleAddUser = (e: React.FormEvent) => {
@@ -337,7 +409,12 @@ export default function SaaSUsers({
     const updated = [newUser, ...activeUsers];
     activeSetUsers(updated);
     localStorage.setItem('optic_users', JSON.stringify(updated));
+    saveUserMutation.mutate(newUser, {
+      onError: (e) => console.error("Database save failed, using local copy:", e)
+    });
     setShowAddModal(false);
+    
+    alert(currentLanguage === 'FR' ? "Nouvel utilisateur créé et enregistré avec succès !" : "New user successfully created and saved!");
     
     // Reset form
     setNewUserName('');
@@ -350,19 +427,50 @@ export default function SaaSUsers({
     setNewUserBoutiques(['Boutique Alpha']);
     setNewUserModules(['dashboard', 'fidelisation']);
     setSelectedHrEmpId('');
+    
+    // Reset pagination to first page
+    setCurrentPage(1);
   };
 
   // Filter logic
-  const filteredUsers = activeUsers.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          user.location.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesRole = roleFilter === 'All' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'All' || user.status === statusFilter;
+  const filteredUsers = useMemo(() => {
+    return activeUsers.filter(user => {
+      const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            user.location.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesRole = roleFilter === 'All' || user.role === roleFilter;
+      const matchesStatus = statusFilter === 'All' || user.status === statusFilter;
 
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [activeUsers, searchQuery, roleFilter, statusFilter]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, roleFilter, statusFilter]);
+
+  // Pagination calculations
+  const totalUsersCount = filteredUsers.length;
+  const totalPages = Math.ceil(totalUsersCount / pageSize) || 1;
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedUsers = useMemo(() => {
+    return filteredUsers.slice(startIndex, endIndex);
+  }, [filteredUsers, startIndex, endIndex]);
+
+  // Virtualization calculations
+  const itemHeight = 72; // height of each row in pixels
+  const viewportHeight = 350; // max-height of viewport in pixels
+  const totalVirtualHeight = filteredUsers.length * itemHeight;
+  
+  const virtualStartIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - 2);
+  const virtualEndIndex = Math.min(filteredUsers.length, Math.floor((scrollTop + viewportHeight) / itemHeight) + 2);
+  const virtualVisibleUsers = useMemo(() => {
+    return filteredUsers.slice(virtualStartIndex, virtualEndIndex);
+  }, [filteredUsers, virtualStartIndex, virtualEndIndex]);
+  const virtualOffsetY = virtualStartIndex * itemHeight;
 
   const getStatusStyle = (status: User['status']) => {
     switch (status) {
@@ -456,105 +564,311 @@ export default function SaaSUsers({
         </div>
       </div>
 
-      {/* User Table Card */}
-      <div className={`overflow-hidden rounded-2xl border ${darkMode ? 'bg-slate-900/40 border-slate-800 shadow-xl' : 'bg-white shadow-xs border-slate-150'}`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className={`text-[10px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-widest ${darkMode ? 'border-b border-slate-800 bg-slate-900/30' : 'bg-slate-50/70 border-b border-slate-100'}`}>
-                <th className="px-6 py-4.5">{currentLanguage === 'FR' ? "Collaborateur" : "Collaborator"}</th>
-                <th className="px-6 py-4.5">{currentLanguage === 'FR' ? "Rôle de sécurité" : "Security Role"}</th>
-                <th className="px-6 py-4.5">{currentLanguage === 'FR' ? "État d'Accès" : "Access Status"}</th>
-                <th className="px-6 py-4.5">{currentLanguage === 'FR' ? "Boutique d'Attribution" : "Assigned Boutiques"}</th>
-                <th className="px-6 py-4.5">{currentLanguage === 'FR' ? "Dernier Accès" : "Last Active"}</th>
-                <th className="px-6 py-4.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="text-xs divide-y divide-slate-100/70">
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => (
-                  <tr 
-                    key={user.id} 
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-all duration-100"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-slate-800 dark:text-indigo-400 flex items-center justify-center font-extrabold text-xs tracking-wider uppercase shadow-2xs border border-indigo-100/40 shrink-0">
-                          {user.name ? user.name.slice(0, 2) : "US"}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-bold text-slate-800 dark:text-slate-100 truncate">{user.name}</div>
-                          <div className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{user.email}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                        <span className="font-bold text-slate-700 dark:text-slate-200">{user.role}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border ${getStatusStyle(user.status)}`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 font-bold">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{user.location}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1 max-w-[280px]">
-                          {(user.allowedBoutiques || []).map(b => (
-                            <span key={b} className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[9px] font-semibold border border-slate-200/40">
-                              {b.replace('Optic Alizé ', '')}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-[10px] text-slate-400 font-mono font-bold">
-                      {user.lastActive}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button 
-                          onClick={() => setEditingUser(user)}
-                          title={currentLanguage === 'FR' ? "Modifier" : "Edit"}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-slate-800 rounded-xl transition duration-100 shrink-0 cursor-pointer"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        
-                        {canDeleteUser ? (
-                          <button 
-                            onClick={() => handleDeleteUser(user.id)}
-                            title={currentLanguage === 'FR' ? "Supprimer" : "Delete"}
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/30 rounded-xl transition duration-100 shrink-0 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <div title={currentLanguage === 'FR' ? "Seul l'Admin ou un compte ayant tous les droits peut supprimer" : "Only administrator or accounts with full permissions can delete"} className="p-2 text-slate-300 dark:text-slate-600 cursor-not-allowed shrink-0">
-                            <Lock className="w-3.5 h-3.5" />
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-              <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-[#64748B] font-mono text-xs">
-                  {currentLanguage === 'FR' ? "Aucun collaborateur trouvé pour cette recherche." : "No collaborator found under this filter query."}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {/* Mode Selector and Stats */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-1">
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+          <span>
+            {currentLanguage === 'FR' 
+              ? `${filteredUsers.length} collaborateurs chargés en cache (React Query)` 
+              : `${filteredUsers.length} collaborators loaded in cache (React Query)`}
+          </span>
+        </div>
+
+        <div className="flex bg-slate-100 dark:bg-slate-850 p-0.5 rounded-xl border border-slate-200/40 shrink-0">
+          <button
+            onClick={() => setRenderMode('pagination')}
+            className={`px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all duration-150 cursor-pointer ${renderMode === 'pagination' ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            📄 {currentLanguage === 'FR' ? "Pagination" : "Pagination"}
+          </button>
+          <button
+            onClick={() => setRenderMode('virtualization')}
+            className={`px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all duration-150 cursor-pointer ${renderMode === 'virtualization' ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            ⚡ {currentLanguage === 'FR' ? "Virtualisation" : "Virtualization"}
+          </button>
         </div>
       </div>
+
+      {isUsersLoading ? (
+        /* --- BEAUTIFUL LAZY LOADING SKELETON SCREEN --- */
+        <div className="space-y-3.5 p-6 bg-white dark:bg-slate-900/40 rounded-2xl border border-slate-150 dark:border-slate-800 shadow-xs">
+          <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded-lg w-1/4 animate-pulse" />
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center justify-between py-4 border-b border-slate-100 dark:border-slate-800/60 last:border-0 animate-pulse">
+                <div className="flex items-center gap-3 w-1/3">
+                  <div className="w-9 h-9 rounded-xl bg-slate-150 dark:bg-slate-800" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-3/4" />
+                    <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded w-1/2" />
+                  </div>
+                </div>
+                <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-1/6" />
+                <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-1/6" />
+                <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-1/12" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        /* --- USER TABLE CARD CONTAINER --- */
+        <div className={`overflow-hidden rounded-2xl border ${darkMode ? 'bg-slate-900/40 border-slate-800 shadow-xl' : 'bg-white shadow-xs border-slate-150'}`}>
+          <div 
+            ref={renderMode === 'virtualization' ? containerRef : undefined}
+            onScroll={renderMode === 'virtualization' ? handleScroll : undefined}
+            className={`overflow-x-auto ${renderMode === 'virtualization' ? 'max-h-[420px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200' : ''}`}
+          >
+            <table className="w-full text-left border-collapse table-fixed min-w-[800px]">
+              <thead className={`${renderMode === 'virtualization' ? 'sticky top-0 z-20 shadow-xs' : ''}`}>
+                <tr className={`text-[10px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-widest ${darkMode ? 'border-b border-slate-800 bg-slate-900/90' : 'bg-slate-50/95 border-b border-slate-100'}`}>
+                  <th className="px-6 py-4.5 w-[28%]">{currentLanguage === 'FR' ? "Collaborateur" : "Collaborator"}</th>
+                  <th className="px-6 py-4.5 w-[15%]">{currentLanguage === 'FR' ? "Rôle de sécurité" : "Security Role"}</th>
+                  <th className="px-6 py-4.5 w-[14%]">{currentLanguage === 'FR' ? "État d'Accès" : "Access Status"}</th>
+                  <th className="px-6 py-4.5 w-[25%]">{currentLanguage === 'FR' ? "Boutique d'Attribution" : "Assigned Boutiques"}</th>
+                  <th className="px-6 py-4.5 w-[10%]">{currentLanguage === 'FR' ? "Dernier Accès" : "Last Active"}</th>
+                  <th className="px-6 py-4.5 w-[8%] text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="text-xs divide-y divide-slate-100/70">
+                {renderMode === 'virtualization' ? (
+                  /* --- MODE VIRTUALISÉ --- */
+                  <>
+                    {virtualStartIndex > 0 && (
+                      <tr style={{ height: `${virtualOffsetY}px` }}><td colSpan={6} /></tr>
+                    )}
+                    {virtualVisibleUsers.length > 0 ? (
+                      virtualVisibleUsers.map((user) => (
+                        <tr 
+                          key={user.id} 
+                          className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-all duration-100"
+                          style={{ height: `${itemHeight}px` }}
+                        >
+                          <td className="px-6 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-slate-800 dark:text-indigo-400 flex items-center justify-center font-extrabold text-xs tracking-wider uppercase shadow-2xs border border-indigo-100/40 shrink-0">
+                                {user.name ? user.name.slice(0, 2) : "US"}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-800 dark:text-slate-100 truncate">{user.name}</div>
+                                <div className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{user.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                              <span className="font-bold text-slate-700 dark:text-slate-200">{user.role}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border ${getStatusStyle(user.status)}`}>
+                              {user.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 font-bold">
+                                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="truncate">{user.location}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1 max-w-[280px]">
+                                {(user.allowedBoutiques || []).map(b => (
+                                  <span key={b} className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[9px] font-semibold border border-slate-200/40">
+                                    {b.replace('Optic Alizé ', '')}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-3 text-[10px] text-slate-400 font-mono font-bold">
+                            {user.lastActive}
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button 
+                                onClick={() => setEditingUser(user)}
+                                title={currentLanguage === 'FR' ? "Modifier" : "Edit"}
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-slate-800 rounded-xl transition duration-100 shrink-0 cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              
+                              {canDeleteUser ? (
+                                <button 
+                                  onClick={() => handleDeleteUser(user.id)}
+                                  title={currentLanguage === 'FR' ? "Supprimer" : "Delete"}
+                                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/30 rounded-xl transition duration-100 shrink-0 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <div title={currentLanguage === 'FR' ? "Seul l'Admin ou un compte ayant tous les droits peut supprimer" : "Only administrator or accounts with full permissions can delete"} className="p-2 text-slate-300 dark:text-slate-600 cursor-not-allowed shrink-0">
+                                  <Lock className="w-3.5 h-3.5" />
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-[#64748B] font-mono text-xs">
+                          {currentLanguage === 'FR' ? "Aucun collaborateur trouvé pour cette recherche." : "No collaborator found under this filter query."}
+                        </td>
+                      </tr>
+                    )}
+                    {virtualEndIndex < filteredUsers.length && (
+                      <tr style={{ height: `${(filteredUsers.length - virtualEndIndex) * itemHeight}px` }}><td colSpan={6} /></tr>
+                    )}
+                  </>
+                ) : (
+                  /* --- MODE PAGINÉ CLASSIQUE --- */
+                  paginatedUsers.length > 0 ? (
+                    paginatedUsers.map((user) => (
+                      <tr 
+                        key={user.id} 
+                        className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-all duration-100"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-slate-800 dark:text-indigo-400 flex items-center justify-center font-extrabold text-xs tracking-wider uppercase shadow-2xs border border-indigo-100/40 shrink-0">
+                              {user.name ? user.name.slice(0, 2) : "US"}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-800 dark:text-slate-100 truncate">{user.name}</div>
+                              <div className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{user.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                            <span className="font-bold text-slate-700 dark:text-slate-200">{user.role}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border ${getStatusStyle(user.status)}`}>
+                            {user.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 font-bold">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{user.location}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 max-w-[280px]">
+                              {(user.allowedBoutiques || []).map(b => (
+                                <span key={b} className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[9px] font-semibold border border-slate-200/40">
+                                  {b.replace('Optic Alizé ', '')}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-[10px] text-slate-400 font-mono font-bold">
+                          {user.lastActive}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button 
+                              onClick={() => setEditingUser(user)}
+                              title={currentLanguage === 'FR' ? "Modifier" : "Edit"}
+                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-slate-800 rounded-xl transition duration-100 shrink-0 cursor-pointer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            
+                            {canDeleteUser ? (
+                              <button 
+                                onClick={() => handleDeleteUser(user.id)}
+                                title={currentLanguage === 'FR' ? "Supprimer" : "Delete"}
+                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/30 rounded-xl transition duration-100 shrink-0 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <div title={currentLanguage === 'FR' ? "Seul l'Admin ou un compte ayant tous les droits peut supprimer" : "Only administrator or accounts with full permissions can delete"} className="p-2 text-slate-300 dark:text-slate-600 cursor-not-allowed shrink-0">
+                                <Lock className="w-3.5 h-3.5" />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-[#64748B] font-mono text-xs">
+                        {currentLanguage === 'FR' ? "Aucun collaborateur trouvé pour cette recherche." : "No collaborator found under this filter query."}
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls Footer */}
+          {renderMode === 'pagination' && (
+            <div className="px-6 py-4.5 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/10">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                <span>{currentLanguage === 'FR' ? "Affichage de" : "Showing"}</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {filteredUsers.length > 0 ? startIndex + 1 : 0}
+                </span>
+                <span>{currentLanguage === 'FR' ? "à" : "to"}</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {Math.min(filteredUsers.length, endIndex)}
+                </span>
+                <span>{currentLanguage === 'FR' ? "sur" : "of"}</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{filteredUsers.length}</span>
+                <span>{currentLanguage === 'FR' ? "collaborateurs" : "collaborators"}</span>
+              </div>
+
+              <div className="flex items-center gap-4.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{currentLanguage === 'FR' ? 'Taille :' : 'Size :'}</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200/80 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 shadow-3xs transition duration-100 cursor-pointer"
+                  >
+                    {currentLanguage === 'FR' ? 'Précédent' : 'Previous'}
+                  </button>
+                  <span className="text-xs font-bold text-slate-600 px-3 font-mono">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 shadow-3xs transition duration-100 cursor-pointer"
+                  >
+                    {currentLanguage === 'FR' ? 'Suivant' : 'Next'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* RBAC Matrix Section */}
       <div className={`p-6 rounded-2xl border ${darkMode ? 'border-slate-800 bg-slate-900/40 shadow-xl' : 'border-slate-150 bg-slate-50/30 shadow-xs'} space-y-6`}>

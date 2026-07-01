@@ -4790,7 +4790,7 @@ class HrDashboardView extends ConsumerWidget {
                     <div>
                       <span className="text-[10px] text-slate-400 block font-semibold">Salaire Brut de Base</span>
                       <span className="font-extrabold text-slate-800 font-mono">
-                        {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(viewingEmployee.salary || 0)}
+                        {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(viewingEmployee.basicSalary || 0)}
                       </span>
                     </div>
                     <div>

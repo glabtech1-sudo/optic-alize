@@ -3,30 +3,23 @@
  * Advanced Client-Side Security Suite, Secure LRS / Cache Cryptography & Multi-User Concurrency Simulator
  */
 
-// Advanced Client-Side custom stream cipher key (rotated salt specifically designed for Optic Alizé)
-const SECURITY_ROTATION_SALT = "OPTICALIZE_SECURE_SALT_2026_x89!";
+import CryptoJS from 'crypto-js';
+
+// Cryptographically robust symmetric key for Optic Alizé client-side cache shield
+const SECURITY_AES_KEY = "OPTICALIZE_SECURE_AES_256_KEY_2026_x89!";
 
 /**
- * Encrypt simple data formats to safeguard local cache from unauthorized debugging, browser extensions, or device hijackers.
+ * Encrypt data using AES-256 to protect local cache from unauthorized debugging, browser extensions, or device hijackers.
  */
 export function encryptLRSData(plainText: string): string {
   try {
     if (!plainText) return "";
-    let result = "";
-    // Lightweight, ultra-fast rotational XOR cipher supporting 100+ parallel calls per millisecond
-    for (let i = 0; i < plainText.length; i++) {
-      const charCode = plainText.charCodeAt(i);
-      const saltCode = SECURITY_ROTATION_SALT.charCodeAt(i % SECURITY_ROTATION_SALT.length);
-      // Bitwise shift & XOR to create an eye-safe unreadable payload
-      const scrambled = charCode ^ saltCode;
-      result += String.fromCharCode(scrambled);
-    }
-    // Encode safely into browser-safe Base64 and prefix with cryptographic signature
-    const base64Scrambled = btoa(unescape(encodeURIComponent(result)));
+    // Encrypt using standard AES-256
+    const cipherText = CryptoJS.AES.encrypt(plainText, SECURITY_AES_KEY).toString();
     const integrityChecksum = calculateSimpleChecksum(plainText);
     
     // Format: SIGN_VERSION|CHECKSUM|PAYLOAD
-    return `LRS_V2|${integrityChecksum}|${base64Scrambled}`;
+    return `LRS_V3|${integrityChecksum}|${cipherText}`;
   } catch (e) {
     console.error("Encryption failure:", e);
     return plainText; 
@@ -40,8 +33,8 @@ export function encryptLRSData(plainText: string): string {
 export function decryptLRSData(encryptedText: string): { data: string; compromised: boolean } {
   try {
     if (!encryptedText) return { data: "", compromised: false };
-    if (!encryptedText.startsWith("LRS_V2|")) {
-      // Legacy unencrypted cache or raw data
+    if (!encryptedText.startsWith("LRS_V3|") && !encryptedText.startsWith("LRS_V2|")) {
+      // Legacy unencrypted cache or older format
       return { data: encryptedText, compromised: false };
     }
 
@@ -50,24 +43,40 @@ export function decryptLRSData(encryptedText: string): { data: string; compromis
       return { data: "", compromised: true };
     }
 
-    const [_, expectedChecksum, base64Payload] = parts;
-    const decodedResult = decodeURIComponent(escape(atob(base64Payload)));
-    
-    let plainText = "";
-    for (let i = 0; i < decodedResult.length; i++) {
-      const charCode = decodedResult.charCodeAt(i);
-      const saltCode = SECURITY_ROTATION_SALT.charCodeAt(i % SECURITY_ROTATION_SALT.length);
-      plainText += String.fromCharCode(charCode ^ saltCode);
+    const [version, expectedChecksum, payload] = parts;
+
+    let decryptedText = "";
+    if (version === "LRS_V3") {
+      // Decrypt using standard AES-256
+      const bytes = CryptoJS.AES.decrypt(payload, SECURITY_AES_KEY);
+      decryptedText = bytes.toString(CryptoJS.enc.Utf8);
+    } else {
+      // Compatibility fallback for old LRS_V2 XOR format
+      try {
+        const decodedResult = decodeURIComponent(escape(atob(payload)));
+        const xorSalt = "OPTICALIZE_SECURE_SALT_2026_x89!";
+        for (let i = 0; i < decodedResult.length; i++) {
+          const charCode = decodedResult.charCodeAt(i);
+          const saltCode = xorSalt.charCodeAt(i % xorSalt.length);
+          decryptedText += String.fromCharCode(charCode ^ saltCode);
+        }
+      } catch (err) {
+        return { data: "", compromised: true };
+      }
+    }
+
+    if (!decryptedText) {
+      return { data: "", compromised: true };
     }
 
     // Integrity constraint check
-    const currentChecksum = calculateSimpleChecksum(plainText);
+    const currentChecksum = calculateSimpleChecksum(decryptedText);
     if (currentChecksum !== parseInt(expectedChecksum, 10)) {
       console.warn("LRS Cache Mismatch: Cache file integrity has been compromised or modified!");
-      return { data: plainText, compromised: true };
+      return { data: decryptedText, compromised: true };
     }
 
-    return { data: plainText, compromised: false };
+    return { data: decryptedText, compromised: false };
   } catch (e) {
     console.error("Decryption failure or payload tampered:", e);
     return { data: "", compromised: true };

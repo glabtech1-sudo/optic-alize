@@ -504,6 +504,10 @@ export default function SuperAdminHQModule({
     localStorage.setItem('optic_hq_branch_modules', JSON.stringify(updatedBmList));
 
     setShowAddBranchModal(false);
+    alert(currentLanguage === 'FR' 
+      ? `L'agence "${branch.name}" a été créée et configurée avec succès !` 
+      : `The agency "${branch.name}" has been successfully created and configured!`
+    );
     
     // Reset fields
     setNewBranchCode('');
@@ -620,6 +624,10 @@ export default function SuperAdminHQModule({
 
     setShowEditBranchModal(false);
     setEditingBranch(null);
+    alert(currentLanguage === 'FR' 
+      ? `Les modifications et modules de l'agence ont été enregistrés avec succès !` 
+      : `The agency modifications and modules have been successfully saved!`
+    );
   };
 
   const handleDeactivateBranch = (id: string) => {
