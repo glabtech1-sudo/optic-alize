@@ -561,7 +561,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
           <body>
             <div>
               <h1>REGISTRE DES PATIENTS & ATELIER - OPTIC ALIZÉ</h1>
-              <p style="font-size: 11px; color: #64748b; margin: 0;">Généré le ${new Date().toLocaleDateString()} • Agence : ${selectedBranchFilter === 'All' ? 'Toutes les Boutiques / Agences' : selectedBranchFilter}</p>
+              <p style="font-size: 11px; color: #64748b; margin: 0;">Généré le ${new Date().toLocaleDateString()} • Agence : ${selectedBranchFilter === 'All' ? 'Toutes les Agences' : selectedBranchFilter}</p>
             </div>
             <hr style="margin-top: 20px; margin-bottom: 25px;" />
             
@@ -571,7 +571,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
                   <th>ID</th>
                   <th>Patient</th>
                   <th>Né(e) le</th>
-                  <th>Boutique</th>
+                  <th>Agence</th>
                   <th>Date Inscription</th>
                   <th>Statut CRM</th>
                   <th>Points Cumulés</th>
@@ -762,7 +762,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
   // Excel (CSV) Download trigger
   const handleExportExcel = () => {
     const headers = [
-      'ID', 'Nom', 'Prenom', 'Date Naissance', 'Fidelite Niveau', 'Points Cumules', 'Boutique Creee', 'Email', 'Mobile', 'Num Secu'
+      'ID', 'Nom', 'Prenom', 'Date Naissance', 'Fidelite Niveau', 'Points Cumules', 'Agence Creee', 'Email', 'Mobile', 'Num Secu'
     ];
     
     const rows = filteredCustomersList.map(c => [
@@ -876,7 +876,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
         </div>
         <div class="info-item">
           <label>Coordonnées et Succursale</label>
-          <value>${patient.phone} &nbsp;|&nbsp; ${patient.email}<br/><span style="font-size: 11px; color:#94a3b8;">Boutique : ${patient.branch}</span></value>
+          <value>${patient.phone} &nbsp;|&nbsp; ${patient.email}<br/><span style="font-size: 11px; color:#94a3b8;">Agence : ${patient.branch}</span></value>
         </div>
       </div>
 
@@ -1276,7 +1276,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
           {/* Right graphics dashboard detail */}
           <div className="lg:col-span-3 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
             <div>
-              <h5 className="text-xs font-mono font-bold uppercase tracking-widest text-[#0097a7] mb-3">Répartition par Boutique</h5>
+              <h5 className="text-xs font-mono font-bold uppercase tracking-widest text-[#0097a7] mb-3">Répartition par Agence</h5>
               
               <div className="space-y-4 font-sans text-xs text-slate-750">
                 <div>
@@ -1454,7 +1454,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
                   <tr className="bg-slate-50/70 border-b border-slate-100">
                     <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Patient</th>
                     <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Date de Naissance</th>
-                    <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Réseau / Boutique</th>
+                    <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Réseau / Agence</th>
                     <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Fidélité CRM</th>
                     <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Ordonnance active</th>
                     <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Garantie active</th>

@@ -327,31 +327,17 @@ async function startServer() {
         }
       }
 
-      const sophieEmail = 'sophie.k@opticalize.com';
-      const sophieUser = existingUsers.find(u => u.email.toLowerCase() === sophieEmail);
-      const sophieHp = await hashPassword('sophie123');
-      if (!sophieUser) {
-        await dbUpsertUser({
-          id: 'USR-SOPHIE-1',
-          name: 'Sophie (Opticienne-Conseil)',
-          email: sophieEmail,
-          password: sophieHp,
-          role: 'Billing Manager',
-          status: 'Active',
-          phone: '+228 90 00 00 02',
-          location: 'Paris Opéra',
-          allowedBoutiques: ['BOU-01'],
-          allowedModules: ['dashboard', 'orders', 'crm', 'accounting', 'hr', 'stock', 'sav', 'settings']
-        });
-        console.log('[AUTH SEED] Seeded default Billing Manager with secure bcrypt password.');
-      } else {
-        const matches = await comparePassword('sophie123', sophieUser.password || '');
-        if (!matches) {
-          await dbUpsertUser({
-            ...sophieUser,
-            password: sophieHp
-          });
-          console.log('[AUTH SEED] Reset and repaired password for Sophie.');
+      // Supprimer tous les autres comptes d'accès conformément à la demande :
+      // "supprimer les compte cree dans utilisateurs crm acces comme dans RH sauf glabtech1@opticalize.com et anges.gildas@opticalize.com"
+      const permittedEmails = [
+        'glabtech1@opticalize.com',
+        'anges.gildas@opticalize.com',
+        'anges.gildas@opticalizé.com'
+      ];
+      for (const u of existingUsers) {
+        if (u.email && !permittedEmails.includes(u.email.toLowerCase().trim())) {
+          await dbDeleteUser(u.email);
+          console.log(`[AUTH SEED] Deleted non-permitted user account: ${u.email}`);
         }
       }
     } catch (err) {

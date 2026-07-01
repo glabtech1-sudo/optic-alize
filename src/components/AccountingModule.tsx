@@ -503,7 +503,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
       return;
     }
     if (transferSource === transferDest) {
-      triggerAlert('La boutique source et destination doivent être différentes.');
+      triggerAlert('L\'agence source et destination doivent être différentes.');
       return;
     }
     const val = parseFloat(transferAmount);
@@ -544,7 +544,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
     });
 
     if (!canTransfer) {
-      triggerAlert('Solde insuffisant dans la boutique source pour ce mode de transfert.');
+      triggerAlert('Solde insuffisant dans l\'agence source pour ce mode de transfert.');
       return;
     }
 
@@ -553,13 +553,13 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
     setTransferAmount('');
     const sourceB = boutiqueBalances.find(b => b.id === transferSource)?.name;
     const destB = boutiqueBalances.find(b => b.id === transferDest)?.name;
-    triggerSuccess(`Transfert inter-boutique réussi : ${val.toLocaleString()} FCFA transférés avec succès de [${sourceB}] vers [${destB}] (${transferType}).`);
+    triggerSuccess(`Transfert inter-agence réussi : ${val.toLocaleString()} FCFA transférés avec succès de [${sourceB}] vers [${destB}] (${transferType}).`);
   };
 
   const handleBoutiqueRestock = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRestockBoutiqueId || !restockAmount) {
-      triggerAlert('Veuillez spécifier la boutique et le montant de l\'approvisionnement.');
+      triggerAlert('Veuillez spécifier l\'agence et le montant de l\'approvisionnement.');
       return;
     }
     const val = parseFloat(restockAmount);
@@ -603,7 +603,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
 
   const executeExcelExportWithFilters = () => {
     let csvContent = "\uFEFF"; // UTF-8 BOM so Excel opens with correct French accents!
-    const boutiqueLabel = exportBoutiqueSelection === 'ALL' ? "TOUTES LES BOUTIQUES" : exportBoutiqueSelection.toUpperCase();
+    const boutiqueLabel = exportBoutiqueSelection === 'ALL' ? "TOUTES LES AGENCES" : exportBoutiqueSelection.toUpperCase();
     const currentUserEmail = localStorage.getItem('optic_user_email') || 'glabtech1@gmail.com';
     const now = new Date();
     const formattedDate = now.toLocaleDateString('fr-FR');
@@ -611,13 +611,13 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
 
     // Excel Metadata segment
     csvContent += `RAPPORT FINANCIER CONSOLIDE EXCEL;;\n`;
-    csvContent += `Boutique selectionnee;"${boutiqueLabel}"\n`;
+    csvContent += `Agence selectionnee;"${boutiqueLabel}"\n`;
     csvContent += `Periode de pointage locked;"${exportStartDate} au ${exportEndDate}"\n`;
     csvContent += `Heure generation automatique;"${formattedDate} a ${formattedTime}"\n`;
     csvContent += `Compte auditeur;"${currentUserEmail}"\n\n`;
 
     // Table headers
-    csvContent += "ID;Date;Libelle;Categorie;Mode Reglement;Debit (Recette FCFA);Credit (Depense FCFA);Tiers Beneficiaire;Statut Ecriture;Boutique Source\n";
+    csvContent += "ID;Date;Libelle;Categorie;Mode Reglement;Debit (Recette FCFA);Credit (Depense FCFA);Tiers Beneficiaire;Statut Ecriture;Agence Source\n";
     
     // Filtered lists
     const filteredRevenues = revenues.filter(r => r.date >= exportStartDate && r.date <= exportEndDate);
@@ -640,7 +640,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    triggerSuccess(`Export Excel pour la boutique [${boutiqueLabel}] sur la période locked généré avec succès !`);
+    triggerSuccess(`Export Excel pour l'agence [${boutiqueLabel}] sur la période locked généré avec succès !`);
   };
 
   const exportStateToPDF = () => {
@@ -699,7 +699,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
             <img src="${logoImage}" style="width: 55px; height: 55px; border-radius: 50%; border: 2px solid rgba(0, 151, 167, 0.4); object-fit: cover;" referrerPolicy="no-referrer" />
             <div>
               <h1 class="title">Optic Alizé - COMPTABILITÉ</h1>
-              <div class="subtitle">SaaS ERP Lunetterie & Réfraction • Multi-Boutiques</div>
+              <div class="subtitle">SaaS ERP Lunetterie & Réfraction • Multi-Agences</div>
             </div>
           </div>
           <div style="text-align: right">
@@ -1514,7 +1514,7 @@ export async function getAccountingSummary(req: Request, res: Response) {
               <div>
                 <h3 className="font-display font-semibold text-[#1F2937] text-xs tracking-wider uppercase flex items-center gap-1.5 text-cyan-700">
                   <Building2 className="w-4 h-4 text-cyan-600 animate-pulse" />
-                  État de Trésorerie par Boutique (Réseau Décentralisé)
+                  État de Trésorerie par Agence (Réseau Décentralisé)
                 </h3>
                 <p className="text-[10px] text-[#1F2937]/65">Accès direct aux comptes de chaque succursale d'optique. Tout est affiché à plat sans liste déroulante filtre.</p>
               </div>
@@ -2269,7 +2269,7 @@ export async function getAccountingSummary(req: Request, res: Response) {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     <tr><td className="p-3 font-bold text-[#0097A7]">512000</td><td>SG Banque Courante</td><td className="text-right">14 205.00</td><td className="text-right">0.00</td><td className="text-right text-emerald-600 font-bold">{bankBalance.toFixed(2)}</td><td className="text-right text-slate-350">0.00</td></tr>
-                    <tr><td className="p-3 font-bold text-[#0097A7]">530000</td><td>Caisse Boutique Principale</td><td className="text-right">150.00</td><td className="text-right">0.00</td><td className="text-right text-emerald-600 font-bold">{cashBalance.toFixed(2)}</td><td className="text-right text-slate-350">0.00</td></tr>
+                    <tr><td className="p-3 font-bold text-[#0097A7]">530000</td><td>Caisse Agence Principale</td><td className="text-right">150.00</td><td className="text-right">0.00</td><td className="text-right text-emerald-600 font-bold">{cashBalance.toFixed(2)}</td><td className="text-right text-slate-350">0.00</td></tr>
                     <tr><td className="p-3 font-bold text-[#0097A7]">513000</td><td>Mobile Money Flottes</td><td className="text-right">3 200.00</td><td className="text-right">0.00</td><td className="text-right text-emerald-600 font-bold">{momoBalance.toFixed(2)}</td><td className="text-right text-slate-350">0.00</td></tr>
                     <tr><td className="p-3 font-bold text-[#0097A7]">707000</td><td>Vente Verres Unifocaux / Progr.</td><td className="text-right">0.00</td><td className="text-right">14 000.00</td><td className="text-right text-slate-350">0.00</td><td className="text-right text-red-500 font-bold">{(14000 + totalRevenues).toFixed(2)}</td></tr>
                     <tr><td className="p-3 font-bold text-[#0097A7]">607000</td><td>Achat verres et marchandises</td><td className="text-right">4 200.00</td><td className="text-right">0.00</td><td className="text-right text-emerald-600 font-bold">{(4200 + totalExpenses).toFixed(2)}</td><td className="text-right text-slate-350">0.00</td></tr>
@@ -2898,13 +2898,13 @@ export async function getAccountingSummary(req: Request, res: Response) {
             <div className="space-y-4 text-left">
               {/* Select Boutique Selector */}
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 block text-left">Sélectionner la boutique à auditer</label>
+                <label className="font-bold text-slate-700 block text-left">Sélectionner l'agence à auditer</label>
                 <select 
                   value={exportBoutiqueSelection}
                   onChange={(e) => setExportBoutiqueSelection(e.target.value)}
                   className="w-full text-xs font-bold rounded-lg border border-slate-250 bg-white p-2.5 outline-none cursor-pointer focus:ring-1 focus:ring-emerald-500 text-slate-755"
                 >
-                  <option value="ALL">🏢 Toutes les boutiques (Consolidé)</option>
+                  <option value="ALL">🏢 Toutes les agences (Consolidé)</option>
                   <option value="depot-central">🏢 Optic Alizé - Dépôt Central</option>
                   {localBranches.map((b) => (
                     <option key={b.id} value={b.id}>🏢 {b.name} ({b.city})</option>

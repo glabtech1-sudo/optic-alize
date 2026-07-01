@@ -633,8 +633,8 @@ export default function SuperAdminHQModule({
   const handleDeactivateBranch = (id: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: "Désactiver la Boutique",
-      message: "Êtes-vous sûr de vouloir désactiver cette boutique ? Elle sera isolée du flux de transactions actif.",
+      title: "Désactiver l'Agence",
+      message: "Êtes-vous sûr de vouloir désactiver cette agence ? Elle sera isolée du flux de transactions actif.",
       actionType: 'deactivate_branch',
       targetId: id
     });
@@ -643,8 +643,8 @@ export default function SuperAdminHQModule({
   const handleActivateBranch = (id: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: "Activer la Boutique",
-      message: "Voulez-vous réactiver cette boutique dans le réseau actif d'enseignes ?",
+      title: "Activer l'Agence",
+      message: "Voulez-vous réactiver cette agence dans le réseau actif d'enseignes ?",
       actionType: 'activate_branch',
       targetId: id
     });
@@ -653,8 +653,8 @@ export default function SuperAdminHQModule({
   const handleArchiveBranch = (id: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: "Archiver la Boutique",
-      message: "Êtes-vous sûr de vouloir archiver cette boutique d'enseigne ? Ses données resteront archivées.",
+      title: "Archiver l'Agence",
+      message: "Êtes-vous sûr de vouloir archiver cette agence d'enseigne ? Ses données resteront archivées.",
       actionType: 'archive_branch',
       targetId: id
     });
@@ -663,8 +663,8 @@ export default function SuperAdminHQModule({
   const handleRealDeleteBranch = (id: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: "Supprimer définitivement la Boutique",
-      message: "Êtes-vous ABSOLUMENT SÛR de vouloir SUPPRIMER définitivement cette boutique de l'architecture ? Cette action est irréversible et détruira ses accès.",
+      title: "Supprimer définitivement l'Agence",
+      message: "Êtes-vous ABSOLUMENT SÛR de vouloir SUPPRIMER définitivement cette agence de l'architecture ? Cette action est irréversible et détruira ses accès.",
       actionType: 'delete_branch',
       targetId: id
     });
@@ -687,28 +687,28 @@ export default function SuperAdminHQModule({
       const updated = branches.filter(b => b.id !== targetId);
       setBranches(updated);
       localStorage.setItem('optic_hq_branches', JSON.stringify(updated));
-      triggerAlert("Succès", "La boutique a été supprimée définitivement avec succès de l'architecture.");
+      triggerAlert("Succès", "L'agence a été supprimée définitivement avec succès de l'architecture.");
     }
     
     if (actionType === 'archive_branch' && targetId) {
       const updated = branches.map(b => b.id === targetId ? { ...b, status: 'Archivé' as const } : b);
       setBranches(updated);
       localStorage.setItem('optic_hq_branches', JSON.stringify(updated));
-      triggerAlert("Archivé", "La boutique a été archivée avec succès.");
+      triggerAlert("Archivé", "L'agence a été archivée avec succès.");
     }
 
     if (actionType === 'deactivate_branch' && targetId) {
       const updated = branches.map(b => b.id === targetId ? { ...b, status: 'Inactif' as const } : b);
       setBranches(updated);
       localStorage.setItem('optic_hq_branches', JSON.stringify(updated));
-      triggerAlert("Désactivé", "La boutique a été désactivée avec succès.");
+      triggerAlert("Désactivé", "L'agence a été désactivée avec succès.");
     }
 
     if (actionType === 'activate_branch' && targetId) {
       const updated = branches.map(b => b.id === targetId ? { ...b, status: 'Actif' as const } : b);
       setBranches(updated);
       localStorage.setItem('optic_hq_branches', JSON.stringify(updated));
-      triggerAlert("Activé", "La boutique a été activée avec succès.");
+      triggerAlert("Activé", "L'agence a été activée avec succès.");
     }
 
     if (actionType === 'delete_zone' && targetId) {
@@ -857,6 +857,7 @@ export default function SuperAdminHQModule({
     localStorage.setItem('optic_saas_orders', JSON.stringify([]));
     localStorage.setItem('optic_accounting_boutique_balances', JSON.stringify([]));
     localStorage.setItem('optic_pos_products', JSON.stringify([]));
+    localStorage.setItem('optic_credited_loyalty_orders', JSON.stringify([]));
     localStorage.setItem('optic_system_factory_reset', 'true');
 
     // Remove authentication session details to take them back to login page on click
@@ -904,6 +905,7 @@ export default function SuperAdminHQModule({
       'optic_saas_orders',
       'optic_accounting_boutique_balances',
       'optic_pos_products',
+      'optic_credited_loyalty_orders',
       'optic_system_factory_reset'
     ];
 

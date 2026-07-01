@@ -378,7 +378,8 @@ export default function SaaSSettings({
           'optic_payslips',
           'optic_saas_orders',
           'optic_accounting_boutique_balances',
-          'optic_pos_products'
+          'optic_pos_products',
+          'optic_credited_loyalty_orders'
         ];
         
         emptyKeys.forEach(key => {
@@ -1416,8 +1417,8 @@ export default function SaaSSettings({
             
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4 font-sans font-medium">
               {currentLanguage === 'FR' 
-                ? "Cette opération va écraser toutes vos boutiques personnalisées, zones d'expansion et fiches métiers pour réinjecter le jeu d'essai standard de SaaS Alizé (Boutiques Alpha, Bêta, Gamma, Delta, Epsilon, avec les 13 modules activés). Cette action est définitive. Saisissez votre mot de passe pour confirmer."
-                : "This operation will overwrite all your custom boutiques, expansion zones, and business sheets to re-inject the standard SaaS Alizé test set (Boutiques Alpha, Beta, Gamma, Delta, Epsilon, with all 13 modules activated). This action is final. Enter your password to confirm."}
+                ? "Cette opération va écraser toutes vos agences personnalisées, zones d'expansion et fiches métiers pour réinjecter le jeu d'essai standard de SaaS Alizé (Agences Alpha, Bêta, Gamma, Delta, Epsilon, avec les 13 modules activés). Cette action est définitive. Saisissez votre mot de passe pour confirmer."
+                : "This operation will overwrite all your custom agencies, expansion zones, and business sheets to re-inject the standard SaaS Alizé test set (Agencies Alpha, Beta, Gamma, Delta, Epsilon, with all 13 modules activated). This action is final. Enter your password to confirm."}
             </p>
 
             <div className="space-y-2 mb-6">

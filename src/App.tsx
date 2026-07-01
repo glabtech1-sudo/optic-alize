@@ -218,12 +218,7 @@ export default function App() {
     const defaults = [
       { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
       { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
-      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
-      { id: 'USR-02', name: 'Sophie Kowalski', email: 'sophie.k@opticalize.com', role: 'Billing Manager', status: 'Active', phone: '+33 6 45 12 89 23', location: 'Optic Alizé Dépôt Central', lastActive: '10 mins ago', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'orders', 'products', 'revenue', 'journal'], password: 'password' },
-      { id: 'USR-03', name: 'Antoine Roussel', email: 'antoine.r@opticalize.com', role: 'Editor', status: 'Pending MFA', phone: '+33 6 89 54 12 36', location: 'Optic Alizé Dépôt Central', lastActive: '2 hours ago', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'commande', 'gestion_optic'], password: 'password' },
-      { id: 'USR-04', name: 'Jérôme Martin', email: 'jerome.m@opticalize.com', role: 'Viewer', status: 'Active', phone: '+33 7 12 45 78 89', location: 'Optic Alizé Dépôt Central', lastActive: 'Yesterday', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'products'], password: 'password' },
-      { id: 'USR-05', name: 'Sarah El-Amri', email: 'sarah.e@opticalize.com', role: 'Editor', status: 'Invited', phone: '+33 6 11 22 33 44', location: 'Optic Alizé Dépôt Central', lastActive: 'Never', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'commande', 'sav'], password: 'password' },
-      { id: 'USR-06', name: 'Marc Dubois', email: 'marc.dubois@opticalize.com', role: 'Viewer', status: 'Suspended', phone: '+33 6 99 88 77 66', location: 'Optic Alizé Dépôt Central', lastActive: '3 days ago', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'products'], password: 'password' },
+      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' }
     ];
     if (saved) {
       try {
@@ -231,19 +226,13 @@ export default function App() {
         if (Array.isArray(parsed)) {
           const clean = parsed.filter((u: any) => 
             u && u.email &&
-            u.email.toLowerCase() !== 'glabtech1@gmail.com' &&
-            u.email.toLowerCase() !== 'glabtech1@opticalize.com' &&
-            u.email.toLowerCase() !== 'anges.gildas@opticalizé.com' &&
-            u.email.toLowerCase() !== 'anges.gildas@opticalize.com'
+            (u.email.toLowerCase() === 'glabtech1@opticalize.com' ||
+             u.email.toLowerCase() === 'anges.gildas@opticalizé.com' ||
+             u.email.toLowerCase() === 'anges.gildas@opticalize.com')
           );
-          const combined = [
-            defaults[0], // glabtech1@opticalize.com
-            defaults[1], // anges.gildas@opticalizé.com
-            defaults[2], // anges.gildas@opticalize.com
-            ...clean
-          ];
-          localStorage.setItem('optic_users', JSON.stringify(combined));
-          return combined;
+          if (clean.length === 0) return defaults;
+          localStorage.setItem('optic_users', JSON.stringify(clean));
+          return clean;
         }
       } catch (e) {}
     }
@@ -268,88 +257,37 @@ export default function App() {
   const SEED_EMPLOYEES = [
     {
       id: 'EMP-01',
-      firstName: 'Khadija',
-      lastName: 'Sy',
-      email: 'khadija.sy@opticalize.com',
+      firstName: 'Glabtech1',
+      lastName: 'Admin',
+      email: 'glabtech1@opticalize.com',
       phone: '+221 77 124 55 93',
-      position: 'Conseiller de Vente',
-      department: 'Magasin',
-      basicSalary: 650.0,
+      position: 'Directeur Général',
+      department: 'Direction',
+      basicSalary: 5000.0,
       status: 'Actif',
-      hireDate: '2024-01-15',
+      hireDate: '2024-01-01',
       contractType: 'CDI',
-      boutique: 'Boutique Alpha',
-      birthDate: '1995-04-12',
-      pinCode: '1111',
-      photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200'
+      boutique: 'Agence Alpha',
+      birthDate: '1985-01-01',
+      pinCode: '0074',
+      photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200'
     },
     {
       id: 'EMP-02',
-      firstName: 'Alioune',
-      lastName: 'Diop',
-      email: 'alioune.diop@opticalize.com',
-      phone: '+221 76 544 32 10',
-      position: 'Opticien-Conseil',
-      department: 'Magasin',
-      basicSalary: 1100.0,
+      firstName: 'Gildas',
+      lastName: 'Concepteur',
+      email: 'anges.gildas@opticalize.com',
+      phone: '+221 77 124 55 93',
+      position: 'Directeur Technique',
+      department: 'Technique',
+      basicSalary: 5000.0,
       status: 'Actif',
-      hireDate: '2023-11-01',
+      hireDate: '2024-01-01',
       contractType: 'CDI',
-      boutique: 'Boutique Bêta',
-      birthDate: '1990-08-24',
-      pinCode: '2222',
-      photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=200'
-    },
-    {
-      id: 'EMP-03',
-      firstName: 'Seydou',
-      lastName: 'Keita',
-      email: 'seydou.keita@opticalize.com',
-      phone: '+221 70 812 34 56',
-      position: 'Magasinier Stock',
-      department: 'Logistique',
-      basicSalary: 550.0,
-      status: 'Actif',
-      hireDate: '2024-02-10',
-      contractType: 'CDD',
-      boutique: 'Boutique Gamma',
-      birthDate: '1993-11-02',
-      pinCode: '3333',
-      photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200'
-    },
-    {
-      id: 'EMP-04',
-      firstName: 'Fatou',
-      lastName: 'Bensouda',
-      email: 'fatou.bensouda@opticalize.com',
-      phone: '+221 78 450 11 22',
-      position: 'Responsable Finance',
-      department: 'Finance',
-      basicSalary: 1550.0,
-      status: 'Actif',
-      hireDate: '2022-05-15',
-      contractType: 'CDI',
-      boutique: 'Boutique Delta',
-      birthDate: '1987-03-30',
-      pinCode: '4444',
-      photo: 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?auto=format&fit=crop&q=80&w=200'
-    },
-    {
-      id: 'EMP-05',
-      firstName: 'Mamadou',
-      lastName: 'Diallo',
-      email: 'mamadou.diallo@opticalize.com',
-      phone: '+221 77 900 88 77',
-      position: 'Opticien Praticien',
-      department: 'Médical/Réfraction',
-      basicSalary: 1250.0,
-      status: 'Actif',
-      hireDate: '2023-04-01',
-      contractType: 'CDI',
-      boutique: 'Boutique Epsilon',
-      birthDate: '1989-12-05',
-      pinCode: '5555',
-      photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200'
+      boutique: 'Agence Alpha',
+      birthDate: '1985-01-01',
+      pinCode: '0074',
+      photo: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=200'
     }
   ];
 
@@ -359,7 +297,17 @@ export default function App() {
     if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter((emp: any) => 
+            emp && emp.email &&
+            (emp.email.toLowerCase() === 'glabtech1@opticalize.com' ||
+             emp.email.toLowerCase() === 'anges.gildas@opticalizé.com' ||
+             emp.email.toLowerCase() === 'anges.gildas@opticalize.com')
+          );
+          if (clean.length === 0) return SEED_EMPLOYEES;
+          localStorage.setItem('optic_hr_employees', JSON.stringify(clean));
+          return clean;
+        }
       } catch (e) {}
     }
     if (localStorage.getItem('optic_system_factory_reset') === 'true') {

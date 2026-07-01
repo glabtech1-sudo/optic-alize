@@ -38,7 +38,7 @@ const translations = {
     codeJournal: "Code Journal",
     refVente: "Réf Vente (POS)",
     client: "Bénéficiaire Client",
-    boutique: "Boutique",
+    boutique: "Agence",
     encaissement: "Encaissement",
     reglement: "Règlement",
     etat: "État",
@@ -64,7 +64,7 @@ const translations = {
     codeJournal: "Journal Code",
     refVente: "Sales Ref (POS)",
     client: "Client Beneficiary",
-    boutique: "Branch Store",
+    boutique: "Agency Store",
     encaissement: "Charged Value",
     reglement: "Payment Mode",
     etat: "Status",
@@ -444,7 +444,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
               ref: item?.id || 'N/A',
               client: item?.customer || 'N/A',
               total: (item?.totalFCFA || 0) / 655.95,
-              shop: item?.optician || 'Boutique Principale',
+              shop: item?.optician || 'Agence Principale',
               status: item?.status === 'finalized' ? 'Delivered' : item?.status === 'cancelled' ? 'Cancelled' : 'Processing',
               method: item?.paymentMode === 'full' ? 'Cash' : 'Échéance'
             });
@@ -764,22 +764,22 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
                   <line x1="0" y1="160" x2="800" y2="160" stroke="#94A3B8" strokeWidth="1" />
                   
                   {/* Horizontal Range Bars showing resolve times (Target vs Actual) */}
-                  {/* Boutique Delta */}
+                  {/* Agence Delta */}
                   <rect x="180" y="25" width="450" height="18" rx="4" fill="#F1F5F9" />
                   <rect x="180" y="25" width="310" height="18" rx="4" fill="#D97706" />
 
-                  {/* Boutique Epsilon */}
+                  {/* Agence Epsilon */}
                   <rect x="180" y="65" width="450" height="18" rx="4" fill="#F1F5F9" />
                   <rect x="180" y="65" width="410" height="18" rx="4" fill="#F59E0B" />
 
-                  {/* Boutique Alpha */}
+                  {/* Agence Alpha */}
                   <rect x="180" y="105" width="450" height="18" rx="4" fill="#F1F5F9" />
                   <rect x="180" y="105" width="220" height="18" rx="4" fill="#F59E0B" />
 
                   {/* Text Markers directly in SVG for ultimate graphic style */}
-                  <text x="50" y="38" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">BOUTIQUE DELTA</text>
-                  <text x="50" y="78" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">BOUTIQUE EPSILON</text>
-                  <text x="50" y="118" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">BOUTIQUE ALPHA</text>
+                  <text x="50" y="38" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">AGENCE DELTA</text>
+                  <text x="50" y="78" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">AGENCE EPSILON</text>
+                  <text x="50" y="118" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">AGENCE ALPHA</text>
                 </svg>
               )}
             </div>

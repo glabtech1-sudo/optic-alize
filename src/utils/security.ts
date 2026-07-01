@@ -145,10 +145,10 @@ export function generateSimulatedLoad(count: number = 72): SimulatedSimultaneous
   const modules = ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'clinique', 'presence'];
   const locations = [
     'Optic Alizé - Dépôt Central', 
-    'Boutique Abidjan', 
-    'Boutique Dakar Plateaux', 
-    'Boutique Delta',
-    'Boutique Epsilon'
+    'Agence Abidjan', 
+    'Agence Dakar Plateaux', 
+    'Agence Delta',
+    'Agence Epsilon'
   ];
   
   const names = [

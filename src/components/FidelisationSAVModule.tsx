@@ -116,6 +116,9 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
 
   // Track credited order IDs to prevent fraud and double counting
   const [creditedOrders, setCreditedOrders] = useState<string[]>(() => {
+    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
+      return [];
+    }
     const saved = localStorage.getItem('optic_credited_loyalty_orders');
     if (saved) {
       try {
@@ -123,8 +126,21 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    // Seed with completed orders to look natural
-    return ['CMD-2350'];
+    
+    // Seed with completed orders to look natural only if commands are not empty/reset
+    const savedCmds = localStorage.getItem('optic_my_commandes');
+    if (savedCmds) {
+      try {
+        const parsedCmds = JSON.parse(savedCmds);
+        if (Array.isArray(parsedCmds)) {
+          const hasInitialCmd = parsedCmds.some((c: any) => c.id === 'CMD-2350');
+          if (hasInitialCmd) {
+            return ['CMD-2350'];
+          }
+        }
+      } catch (e) {}
+    }
+    return [];
   });
 
   // Filter & Search loyalty states
@@ -201,16 +217,32 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
       const savedCmds = localStorage.getItem('optic_my_commandes');
       if (savedCmds) {
         try {
-          const parsed = JSON.parse(savedCmds);
-          if (Array.isArray(parsed)) {
+          const parsedCmds = JSON.parse(savedCmds);
+          if (Array.isArray(parsedCmds)) {
             setCommandes(prev => {
               if (JSON.stringify(prev) === savedCmds) {
                 return prev;
               }
-              return parsed;
+              return parsedCmds;
             });
           }
         } catch (e) {}
+      }
+      const savedCredited = localStorage.getItem('optic_credited_loyalty_orders');
+      if (savedCredited) {
+        try {
+          const parsedCredited = JSON.parse(savedCredited);
+          if (Array.isArray(parsedCredited)) {
+            setCreditedOrders(prev => {
+              if (JSON.stringify(prev) === savedCredited) {
+                return prev;
+              }
+              return parsedCredited;
+            });
+          }
+        } catch (e) {}
+      } else if (localStorage.getItem('optic_system_factory_reset') === 'true') {
+        setCreditedOrders([]);
       }
     };
     window.addEventListener('storage', handleStorageChange);

@@ -88,9 +88,9 @@ interface ToastNotification {
 }
 
 const PRESET_USERS = [
-  { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Boutique Alpha' },
-  { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Boutique Bêta' },
-  { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Boutique Gamma' },
+  { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Agence Alpha' },
+  { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Agence Bêta' },
+  { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Agence Gamma' },
   { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'Dépôt Central' }
 ];
 
@@ -133,7 +133,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       channelId: 'general',
       senderId: 'staff_1',
       senderName: 'Sophie (Opticienne-Conseil)',
-      senderShop: '🏢 Boutique Alpha',
+      senderShop: '🏢 Agence Alpha',
       content: "Bonjour l'équipe d'Optic Alizé ! Est-ce que le transfert de montures et verres progressifs depuis le Dépôt Central a bien été validé ?",
       attachment: null,
       createdAt: new Date(Date.now() - 3600000 * 2.5).toISOString()
@@ -144,8 +144,8 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       channelId: 'general',
       senderId: 'staff_2',
       senderName: 'Jean-Marc (Montage Labo)',
-      senderShop: '🏢 Boutique Bêta',
-      content: "Oui Sophie ! C'est en cours. Le Gérant a procédé à l'approvisionnement des stocks de nos boutiques ce matin.",
+      senderShop: '🏢 Agence Bêta',
+      content: "Oui Sophie ! C'est en cours. Le Gérant a procédé à l'approvisionnement des stocks de nos agences ce matin.",
       attachment: null,
       createdAt: new Date(Date.now() - 3600000 * 2.5).toISOString()
     },
@@ -155,7 +155,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       channelId: 'atelier',
       senderId: 'staff_2',
       senderName: 'Jean-Marc (Montage Labo)',
-      senderShop: '🏢 Boutique Bêta',
+      senderShop: '🏢 Agence Bêta',
       content: "Rappel laboratoire : Les meules automatiques ont été inspectées et calibrées pour les verres minéraux et organiques.",
       attachment: null,
       createdAt: new Date(Date.now() - 3600000 * 2.5).toISOString()
@@ -165,7 +165,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
   const [announcements, setAnnouncements] = useState<Announcement[]>([
     {
       id: 'ann_init_1',
-      title: '📦 Procédure d\'approvisionnement inter-boutiques activée',
+      title: '📦 Procédure d\'approvisionnement inter-agences activée',
       content: 'Chaque filiale d\'Optic Alizé peut désormais enregistrer ses ventes locales et envoyer des alertes de réapprovisionnement. Seul le Dépôt Central d\'Optic Alizé dispose du bouton d\'émission du transfert logistique.',
       createdAt: new Date(Date.now() - 3600000 * 6).toISOString(),
       senderName: 'Direction Générale Optic Alizé'
@@ -173,9 +173,9 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
   ]);
 
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([
-    { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Boutique Alpha' },
-    { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Boutique Bêta' },
-    { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Boutique Gamma' },
+    { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Agence Alpha' },
+    { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Agence Bêta' },
+    { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Agence Gamma' },
     { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'Dépôt Central' }
   ]);
 
@@ -243,7 +243,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       patientId,
       fieldName: 'sphereOD',
       myValue: record.sphereOD,
-      otherUser: 'Marc (Boutique Dakar Plateaux)',
+      otherUser: 'Marc (Agence Dakar Plateaux)',
       otherValue: '-3.75'
     });
   };
@@ -1723,7 +1723,7 @@ class ChatNotifier extends StateNotifier<List<MessageEntity>> {
                     <div className="border border-emerald-200 bg-emerald-50/50 p-4 rounded-xl space-y-2">
                       <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Votre Modification</span>
                       <p className="text-2xl font-black text-emerald-900">{activeConflict.myValue || 'Vide'}</p>
-                      <span className="text-[10px] text-emerald-600 block font-medium">Boutique Locale (Vous)</span>
+                      <span className="text-[10px] text-emerald-600 block font-medium">Agence Locale (Vous)</span>
                     </div>
 
                     <div className="border border-amber-200 bg-amber-50/50 p-4 rounded-xl space-y-2">

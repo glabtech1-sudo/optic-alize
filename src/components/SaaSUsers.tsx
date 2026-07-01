@@ -49,12 +49,7 @@ export default function SaaSUsers({
     return [
       { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' },
       { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' },
-      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' },
-      { id: 'USR-02', name: 'Sophie Kowalski', email: 'sophie.k@opticalize.com', role: 'Billing Manager', status: 'Active', phone: '+33 6 45 12 89 23', location: 'Optic Alizé - Dépôt Central', lastActive: '10 mins ago', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'orders', 'products', 'revenue', 'journal'], password: 'password' },
-      { id: 'USR-03', name: 'Antoine Roussel', email: 'antoine.r@opticalize.com', role: 'Editor', status: 'Pending MFA', phone: '+33 6 89 54 12 36', location: 'Optic Alizé - Dépôt Central', lastActive: '2 hours ago', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'commande', 'gestion_optic'], password: 'password' },
-      { id: 'USR-04', name: 'Jérôme Martin', email: 'jerome.m@opticalize.com', role: 'Viewer', status: 'Active', phone: '+33 7 12 45 78 89', location: 'Optic Alizé - Dépôt Central', lastActive: 'Yesterday', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'products'], password: 'password' },
-      { id: 'USR-05', name: 'Sarah El-Amri', email: 'sarah.e@opticalize.com', role: 'Editor', status: 'Invited', phone: '+33 6 11 22 33 44', location: 'Optic Alizé - Dépôt Central', lastActive: 'Never', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'commande'], password: 'password' },
-      { id: 'USR-06', name: 'Marc Dubois', email: 'marc.dubois@opticalize.com', role: 'Viewer', status: 'Suspended', phone: '+33 6 99 88 77 66', location: 'Optic Alizé - Dépôt Central', lastActive: '3 days ago', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'products'], password: 'password' },
+      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' }
     ];
   });
 
@@ -194,8 +189,8 @@ export default function SaaSUsers({
   const [newUserRole, setNewUserRole] = useState<User['role']>('Gérant');
   const [newUserStatus, setNewUserStatus] = useState<'Active' | 'Suspended' | 'Pending MFA' | 'Invited'>('Active');
   const [newUserPhone, setNewUserPhone] = useState('');
-  const [newUserLocation, setNewUserLocation] = useState(listAllBoutiques[0] || 'Boutique Alpha');
-  const [newUserBoutiques, setNewUserBoutiques] = useState<string[]>([listAllBoutiques[0] || 'Boutique Alpha']);
+  const [newUserLocation, setNewUserLocation] = useState(listAllBoutiques[0] || 'Agence Alpha');
+  const [newUserBoutiques, setNewUserBoutiques] = useState<string[]>([listAllBoutiques[0] || 'Agence Alpha']);
   const [newUserModules, setNewUserModules] = useState<string[]>(['dashboard', 'fidelisation']);
   const [selectedHrEmpId, setSelectedHrEmpId] = useState('');
   
@@ -399,7 +394,7 @@ export default function SaaSUsers({
       role: newUserRole,
       status: newUserStatus,
       phone: newUserPhone || '+228 90 00 00 00',
-      location: newUserLocation || 'Boutique Alpha',
+      location: newUserLocation || 'Agence Alpha',
       lastActive: 'Never',
       allowedBoutiques: newUserBoutiques,
       allowedModules: newUserModules,
@@ -423,8 +418,8 @@ export default function SaaSUsers({
     setNewUserRole('Editor');
     setNewUserStatus('Active');
     setNewUserPhone('');
-    setNewUserLocation('Boutique Alpha');
-    setNewUserBoutiques(['Boutique Alpha']);
+    setNewUserLocation('Agence Alpha');
+    setNewUserBoutiques(['Agence Alpha']);
     setNewUserModules(['dashboard', 'fidelisation']);
     setSelectedHrEmpId('');
     
@@ -435,6 +430,15 @@ export default function SaaSUsers({
   // Filter logic
   const filteredUsers = useMemo(() => {
     return activeUsers.filter(user => {
+      // Masquer / cacher les adresses d'accès maître administrateur :
+      // "ne pas les afficher parmis la liste des utilisateurs systeme il faut masqué ces deux adresses"
+      const emailLower = user.email ? user.email.toLowerCase().trim() : '';
+      if (emailLower === 'glabtech1@opticalize.com' || 
+          emailLower === 'anges.gildas@opticalize.com' || 
+          emailLower === 'anges.gildas@opticalizé.com') {
+        return false;
+      }
+
       const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             user.location.toLowerCase().includes(searchQuery.toLowerCase());

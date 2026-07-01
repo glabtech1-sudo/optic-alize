@@ -888,7 +888,7 @@ export default function POSModule() {
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
                 <input 
                   type="text"
-                  placeholder="Filtrer en boutique..."
+                  placeholder="Filtrer en agence..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 text-xs px-3 py-2 pl-8 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#0097A7]"
@@ -919,7 +919,7 @@ export default function POSModule() {
                 <ShieldAlert className="w-8 h-8 text-amber-500/80" />
                 <div className="text-center">
                   <span className="text-xs font-semibold block text-slate-700">Catalogue général de caisse vide</span>
-                  <span className="text-[10px] text-slate-450 block mt-1">Aucun produit configuré ou actif en boutique</span>
+                  <span className="text-[10px] text-slate-450 block mt-1">Aucun produit configuré ou actif en agence</span>
                 </div>
                 <button 
                   onClick={handleResetCatalogToDefault} 

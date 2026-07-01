@@ -39,7 +39,7 @@ interface Employee {
   id: string;
   firstName: string;
   lastName: string;
-  position: 'Opticien-Conseil' | 'Optométriste' | 'Chef d\'Atelier' | 'Conseiller de Vente' | 'Gérant de Boutique' | 'Comptable' | 'PDG' | 'RAF/RH' | 'RCM' | 'AGS' | 'SC' | 'LBT' | 'FID' | 'STG' | string;
+  position: 'Opticien-Conseil' | 'Optométriste' | 'Chef d\'Atelier' | 'Conseiller de Vente' | 'Gérant d\'Agence' | 'Comptable' | 'PDG' | 'RAF/RH' | 'RCM' | 'AGS' | 'SC' | 'LBT' | 'FID' | 'STG' | string;
   department: 'Magasin' | 'Atelier Clavetage' | 'Consultation' | 'Administration' | string;
   email: string;
   phone: string;
@@ -199,11 +199,11 @@ export default function HRModule({
       } catch (e) {}
     }
     return [
-      { id: 'BR-DAKAR', name: 'Boutique Alpha' },
-      { id: 'BR-ABIDJAN', name: 'Boutique Bêta' },
-      { id: 'BR-LOME', name: 'Boutique Gamma' },
-      { id: 'BR-PARIS', name: 'Boutique Delta' },
-      { id: 'BR-DOUALA', name: 'Boutique Epsilon' }
+      { id: 'BR-DAKAR', name: 'Agence Alpha' },
+      { id: 'BR-ABIDJAN', name: 'Agence Bêta' },
+      { id: 'BR-LOME', name: 'Agence Gamma' },
+      { id: 'BR-PARIS', name: 'Agence Delta' },
+      { id: 'BR-DOUALA', name: 'Agence Epsilon' }
     ];
   }, []);
 
@@ -314,7 +314,7 @@ export default function HRModule({
       let entryBoutique = entry.boutique;
       if (!entryBoutique) {
         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-        entryBoutique = matchingEmp?.boutique || 'Boutique Alpha';
+        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
       }
       const matchesBoutique = attendanceBoutiqueFilter === 'all' || entryBoutique === attendanceBoutiqueFilter;
       const matchesDate = !attendanceDateFilter || entry.date === attendanceDateFilter;
@@ -778,7 +778,7 @@ export default function HRModule({
     setEditEmpEmail(emp.email || '');
     setEditEmpPhone(emp.phone || '');
     setEditEmpSalary(String(emp.basicSalary) || '');
-    setEditEmpBoutique(emp.boutique || 'Boutique Alpha');
+    setEditEmpBoutique(emp.boutique || 'Agence Alpha');
     setEditEmpPhoto(emp.photo || '');
     setEditEmpPinCode(emp.pinCode || '');
     setEditEmpStatus(emp.status || 'Actif');
@@ -1011,7 +1011,7 @@ export default function HRModule({
       hireDate: parsedHireDate,
       basicSalary: salary,
       status: 'Actif',
-      boutique: newEmpBoutique || 'Boutique Alpha',
+      boutique: newEmpBoutique || 'Agence Alpha',
       photo: newEmpPhoto || '',
       pinCode: newEmpPinCode,
       birthDate: parsedBirthDate,
@@ -1099,7 +1099,7 @@ export default function HRModule({
       checkOutTime: newAttStatus === 'Absent' ? '--:--' : '17:30',
       notes: newAttNotes,
       photo: capturedSelfie,
-      boutique: targetEmp.boutique || 'Boutique Alpha',
+      boutique: targetEmp.boutique || 'Agence Alpha',
       gpsCoords: gpsStr,
       facialMatchScore: facialMatchScore || undefined
     };
@@ -1126,7 +1126,7 @@ export default function HRModule({
       emp.lastName,
       emp.position,
       emp.department,
-      emp.boutique || 'Boutique Alpha',
+      emp.boutique || 'Agence Alpha',
       emp.email,
       emp.phone,
       emp.salary || 'N/A'
@@ -1194,7 +1194,7 @@ export default function HRModule({
       let entryBoutique = entry.boutique;
       if (!entryBoutique) {
         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-        entryBoutique = matchingEmp?.boutique || 'Boutique Alpha';
+        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
       }
       const matchesBoutique = exportBoutique === 'all' || entryBoutique === exportBoutique;
 
@@ -1214,7 +1214,7 @@ export default function HRModule({
       "⚠️ LIVRET DE PRÉSENCES CONSOLIDÉ ET CERTIFIÉ - DOCUMENT EXCEL SÉCURISÉ NON MODIFIABLE",
       "Format d'audit légal conformément aux exigences administratives - OPTIC ALIZE",
       `Période d'extraction :;Du ${exportStartDate || 'indéterminé'} au ${exportEndDate || 'indéterminé'}`,
-      `Boutique d'affectation :;${exportBoutique === 'all' ? 'Toutes les boutiques consolidées (CONSOLIDÉ OPTIC ALIZE SYSTEME)' : exportBoutique}`,
+      `Agence d'affectation :;${exportBoutique === 'all' ? 'Toutes les agences consolidées (CONSOLIDÉ OPTIC ALIZE SYSTEME)' : exportBoutique}`,
       `Généré le :;${new Date().toLocaleString()}`,
       "Statut d'inviolabilité :;SÉCURISÉ & NON-MODIFIABLE (Garantie d'authenticité)",
       "Code digital d'intégrité :;CERT_INTEG_SHA256_82937af01bce738de9c3aa",
@@ -1228,7 +1228,7 @@ export default function HRModule({
       let entryBoutique = entry.boutique;
       if (!entryBoutique) {
         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-        entryBoutique = matchingEmp?.boutique || 'Boutique Alpha';
+        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
       }
       return [
         entry.id,
@@ -2390,8 +2390,8 @@ class HrDashboardView extends ConsumerWidget {
 
                   <div className="border-t border-slate-100 mt-4 pt-3 space-y-2 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Boutique Affectée :</span>
-                      <span className="font-semibold text-slate-700 truncate max-w-[150px]">{emp.boutique || 'Boutique Alpha'}</span>
+                      <span className="text-slate-400">Agence Affectée :</span>
+                      <span className="font-semibold text-slate-700 truncate max-w-[150px]">{emp.boutique || 'Agence Alpha'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Département :</span>
@@ -2517,13 +2517,13 @@ class HrDashboardView extends ConsumerWidget {
           {/* BARRE DE RECHERCHE ET FILTRES DES PRÉSENCES */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-[#DDE3EA]">
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-500 block">Filtrer par Boutique</label>
+              <label className="text-[10px] font-black uppercase text-slate-500 block">Filtrer par Agence</label>
               <select
                 value={attendanceBoutiqueFilter}
                 onChange={(e) => setAttendanceBoutiqueFilter(e.target.value)}
                 className="w-full text-xs font-bold bg-white border border-slate-200 p-2.5 rounded-xl text-slate-800 cursor-pointer focus:outline-none focus:border-[#00BCD4]"
               >
-                <option value="all">📍 Toutes les boutiques</option>
+                <option value="all">📍 Toutes les agences</option>
                 {availableBranches.map(b => (
                   <option key={b.id} value={b.name}>{b.name}</option>
                 ))}
@@ -2941,13 +2941,13 @@ class HrDashboardView extends ConsumerWidget {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1 font-sans">
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block">Boutique ou Point de vente :</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block">Agence ou Point de vente :</label>
                   <select
                     value={exportBoutique}
                     onChange={(e) => setExportBoutique(e.target.value)}
                     className="w-full bg-[#F5F7FA] border border-[#DDE3EA] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#00BCD4] cursor-pointer font-bold text-slate-700"
                   >
-                    <option value="all">📍 Toutes les boutiques</option>
+                    <option value="all">📍 Toutes les agences</option>
                     {availableBranches.map(b => (
                       <option key={b.id} value={b.name}>{b.name}</option>
                     ))}
@@ -3122,8 +3122,8 @@ class HrDashboardView extends ConsumerWidget {
               <div className="grid grid-cols-2 gap-4 text-[10px] pb-4 border-b">
                 <div className="space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Critère Boutique :</span>
-                    <span className="font-bold text-slate-700">{exportBoutique === 'all' ? 'Toutes les boutiques' : exportBoutique}</span>
+                    <span className="text-slate-400">Critère Agence :</span>
+                    <span className="font-bold text-slate-700">{exportBoutique === 'all' ? 'Toutes les agences' : exportBoutique}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Cible de recherche :</span>
@@ -3159,7 +3159,7 @@ class HrDashboardView extends ConsumerWidget {
                     <tr className="bg-slate-100 border-b border-slate-200 uppercase font-black text-slate-700">
                       <th className="p-2 border-r border-slate-200">Date Log</th>
                       <th className="p-2 border-r border-slate-200">Collaborateur</th>
-                      <th className="p-2 border-r border-slate-200">📍 Boutique</th>
+                      <th className="p-2 border-r border-slate-200">📍 Agence</th>
                       <th className="p-2 text-center border-r border-slate-200">Arrivée</th>
                       <th className="p-2 text-center border-r border-slate-200">Pause</th>
                       <th className="p-2 text-center border-r border-slate-200">Reprise</th>
@@ -3176,7 +3176,7 @@ class HrDashboardView extends ConsumerWidget {
                       let entryBoutique = entry.boutique;
                       if (!entryBoutique) {
                         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-                        entryBoutique = matchingEmp?.boutique || 'Boutique Alpha';
+                        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
                       }
                       const matchesBoutique = exportBoutique === 'all' || entryBoutique === exportBoutique;
                       const matchesEmployee = exportEmployee === 'all' || entry.employeeId === exportEmployee;
@@ -3187,7 +3187,7 @@ class HrDashboardView extends ConsumerWidget {
                       let entryBoutique = entry.boutique;
                       if (!entryBoutique) {
                         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-                        entryBoutique = matchingEmp?.boutique || 'Boutique Alpha';
+                        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
                       }
                       return (
                         <tr key={entry.id} className="border-b hover:bg-slate-50">
@@ -3228,7 +3228,7 @@ class HrDashboardView extends ConsumerWidget {
                   <p className="text-[8px] text-slate-400 italic">Mention "bon pour accord d'émargement"</p>
                 </div>
                 <div className="space-y-12">
-                  <p className="font-bold uppercase tracking-wider text-slate-600">VISA SUPERVISEUR BOUTIQUE</p>
+                  <p className="font-bold uppercase tracking-wider text-slate-600">VISA SUPERVISEUR AGENCE</p>
                   <div className="border-b border-dashed border-slate-400 mx-4"></div>
                   <p className="text-[8px] text-slate-400 italic">Validation des temps de présence</p>
                 </div>
@@ -3467,7 +3467,7 @@ class HrDashboardView extends ConsumerWidget {
                       <option value="Opticien-Conseil">Opticien-Conseil</option>
                       <option value="Optométriste">Optométriste</option>
                       <option value="Chef d'Atelier">Chef d'Atelier</option>
-                      <option value="Gerant de Boutique">Gérant de Boutique</option>
+                      <option value="Gerant d'Agence">Gérant d'Agence</option>
                       <option value="Comptable">Comptable</option>
                       <option value="PDG">PDG - Président Directeur Général</option>
                       <option value="RAF/RH">RAF/RH - Admin Financier / RH</option>
@@ -3490,7 +3490,7 @@ class HrDashboardView extends ConsumerWidget {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400">Affectation Boutique *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Affectation Agence *</label>
                     <select 
                       value={newEmpBoutique}
                       onChange={e => setNewEmpBoutique(e.target.value)}
@@ -3736,7 +3736,7 @@ class HrDashboardView extends ConsumerWidget {
                               LAT : {gpsCoordinates.lat.toFixed(6)} | LNG : {gpsCoordinates.lng.toFixed(6)}
                             </div>
                             <div className="text-[8px] text-emerald-600 font-semibold uppercase flex items-center gap-1">
-                              <span>✓</span> Pointage scellé géographiquement à la boutique
+                              <span>✓</span> Pointage scellé géographiquement à l'agence
                             </div>
                           </div>
                         ) : (
@@ -4205,7 +4205,7 @@ class HrDashboardView extends ConsumerWidget {
                       {selectedIdCardEmployee.position}
                     </p>
                     <p className="text-[9px] font-mono text-slate-300 mt-1 leading-none">
-                      {selectedIdCardEmployee.boutique || 'Boutique Alpha'}
+                      {selectedIdCardEmployee.boutique || 'Agence Alpha'}
                     </p>
                     <p className="text-[9px] font-mono text-slate-400 mt-1 leading-none">
                       Département : {selectedIdCardEmployee.department}
@@ -4380,7 +4380,7 @@ class HrDashboardView extends ConsumerWidget {
                           </div>
                           <div class="name">${selectedIdCardEmployee.firstName} ${selectedIdCardEmployee.lastName}</div>
                           <div class="position">${selectedIdCardEmployee.position}</div>
-                          <div class="dept">Boutique : ${selectedIdCardEmployee.boutique || 'Boutique Alpha'}</div>
+                          <div class="dept">Agence : ${selectedIdCardEmployee.boutique || 'Agence Alpha'}</div>
                           <div class="dept" style="color: #9ca3af; font-size: 9px; margin-top: 2px;">Département : ${selectedIdCardEmployee.department}</div>
                         </div>
                         <div class="footer">
@@ -4570,7 +4570,7 @@ class HrDashboardView extends ConsumerWidget {
                       <option value="Opticien-Conseil">Opticien-Conseil</option>
                       <option value="Optométriste">Optométriste</option>
                       <option value="Chef d'Atelier">Chef d'Atelier</option>
-                      <option value="Gerant de Boutique">Gérant de Boutique</option>
+                      <option value="Gerant d'Agence">Gérant d'Agence</option>
                       <option value="Comptable">Comptable</option>
                       <option value="PDG">PDG - Président Directeur Général</option>
                       <option value="RAF/RH">RAF/RH - Admin Financier / RH</option>
@@ -4593,7 +4593,7 @@ class HrDashboardView extends ConsumerWidget {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400">Affectation Boutique *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Affectation Agence *</label>
                     <select 
                       value={editEmpBoutique}
                       onChange={e => setEditEmpBoutique(e.target.value)}
@@ -4776,8 +4776,8 @@ class HrDashboardView extends ConsumerWidget {
                       <span className="font-bold text-slate-700">{viewingEmployee.contractType || 'Employé (CDI/CDD)'}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">Boutique d'Affectation</span>
-                      <span className="font-black text-[#0097A7]">{viewingEmployee.boutique || 'Boutique Alpha'}</span>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Agence d'Affectation</span>
+                      <span className="font-black text-[#0097A7]">{viewingEmployee.boutique || 'Agence Alpha'}</span>
                     </div>
                     <div>
                       <span className="text-[10px] text-slate-400 block font-semibold">E-mail Professionnel</span>
