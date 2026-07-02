@@ -297,16 +297,8 @@ export default function App() {
     if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const clean = parsed.filter((emp: any) => 
-            emp && emp.email &&
-            (emp.email.toLowerCase() === 'glabtech1@opticalize.com' ||
-             emp.email.toLowerCase() === 'anges.gildas@opticalizé.com' ||
-             emp.email.toLowerCase() === 'anges.gildas@opticalize.com')
-          );
-          if (clean.length === 0) return SEED_EMPLOYEES;
-          localStorage.setItem('optic_hr_employees', JSON.stringify(clean));
-          return clean;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       } catch (e) {}
     }
@@ -320,6 +312,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('optic_hr_employees', JSON.stringify(hrEmployees));
+    window.dispatchEvent(new Event('storage'));
   }, [hrEmployees]);
 
   const isSuperAdmin = currentUserEmail === 'glabtech1@gmail.com' || 

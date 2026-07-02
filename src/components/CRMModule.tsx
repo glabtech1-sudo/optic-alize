@@ -139,6 +139,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
 
   React.useEffect(() => {
     localStorage.setItem('optic_crm_customers', JSON.stringify(customers));
+    window.dispatchEvent(new Event('storage'));
   }, [customers]);
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'list' | 'detail'>('list');

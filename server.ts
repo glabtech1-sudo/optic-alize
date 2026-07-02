@@ -1036,7 +1036,7 @@ async function startServer() {
 
   // 2.5 API - Reconnaissance biométrique faciale via Gemini
   app.post('/api/presence/identify', async (req, res) => {
-    const { webcamImage, candidates } = req.body;
+    const { webcamImage, livenessChallengeImage, candidates } = req.body;
 
     if (!webcamImage) {
       return res.status(400).json({ error: 'L\'image de la webcam est requise.' });
@@ -1058,35 +1058,42 @@ async function startServer() {
         return res.status(400).json({ error: 'Format d\'image webcam invalide.' });
       }
 
+      const parsedChallenge = livenessChallengeImage ? parseDataUrl(livenessChallengeImage) : null;
+
       const prompt = `
       Tu es un système de reconnaissance faciale biométrique de HAUTE SÉCURITÉ d'Optic Alizé.
-      Ton rôle est d'analyser l'image de la webcam (IMAGE CIBLE) et de déterminer avec une certitude absolue si cette personne correspond à l'un des candidats de la base (PHOTOS DE RÉFÉRENCE).
+      Ton rôle est de faire deux choses :
+      1. ANALYSE ANTI-SPOOFING MULTI-COUCHES : Détecter et contrer toute tentative d'usurpation d'identité ou d'attaque par rejeu (par exemple, présenter une photo imprimée sur papier, afficher l'image d'un employé sur un smartphone/tablette, ou rediffuser une vidéo).
+      2. RECONNAISSANCE BIOMÉTRIQUE : Comparer l'image capturée avec les photos de référence des candidats enregistrés dans le roster RH.
 
       SÉCURITÉ MAXIMUM - PROTOCOLE ZÉRO FAUX POSITIF :
-      1. FAUX POSITIF INTERDIT : Il est mille fois préférable de refuser un employé légitime (retourner "unknown") que d'attribuer par erreur l'identité d'un employé à un autre.
-      2. Si la personne sur la webcam (IMAGE CIBLE) n'est pas EXACTEMENT, CLAIREMENT et INDISCUTABLEMENT la même personne physique qu'un des candidats, tu DOIS retourner "unknown" pour matchedId, avec un score de 0.
-      3. Attention aux utilisateurs supprimés ou inconnus : si l'employé devant la webcam n'est plus présent dans la liste de candidats ci-dessous (par exemple s'il a été supprimé des RH), tu ne dois JAMAIS essayer de lui attribuer le profil d'un autre employé qui lui ressemble vaguement (par genre, couleur de peau ou coiffure). Si son identité précise n'est pas représentée dans les candidats, retourne impérativement {"matchedId": "unknown", "score": 0, "reason": "Visage non enregistré ou utilisateur supprimé de la base RH."}.
-      4. Analyse faciale minutieuse :
-         - Compare rigoureusement la structure osseuse, la forme des yeux, la forme du nez, les lèvres, les sourcils, l'espacement oculaire, la pilosité faciale (barbe/moustache) et les contours généraux.
-         - Si les cheveux ou d'autres traits accessoires diffèrent, sois très prudent. Si l'ossature faciale ou les traits clés ne sont pas identiques, rejette la correspondance.
-         - Ne te base pas sur les vêtements ni sur l'arrière-plan.
-      5. En cas de doute, même infime, tu DOIS retourner "unknown".
+      - S'il y a le moindre indice de spoofing (contours de papier froissés, reflets d'écran, trame de pixels LCD/OLED, moirage, cadrage anormal, absence totale de micro-mouvement d'expression faciale), tu DOIS refuser la connexion (matchedId: "unknown", score: 0).
+      - Si deux images de webcam (IMAGE CIBLE PRINCIPALE et IMAGE DÉFI DE VIVACITÉ) te sont fournies :
+        a) Elles doivent correspondre à la même personne.
+        b) Elles doivent impérativement présenter un changement d'expression naturel et subtil (comme cligner des yeux, sourire ou tourner légèrement la tête) prouvant que le flux est vivant et dynamique.
+        c) Si les deux images sont rigoureusement identiques au pixel près, cela indique une tentative de triche avec une photo statique téléchargée. Refuse immédiatement !
+
+      Analyse faciale minutieuse :
+      - Compare la structure osseuse, la forme des yeux, la forme du nez, les lèvres, les sourcils, l'espacement oculaire, la pilosité faciale (barbe/moustache) et les contours généraux.
+      - Ne te base pas sur les vêtements ni sur l'arrière-plan.
+      - Si le candidat a été supprimé ou est inconnu, ne l'associe pas à une personne ressemblante.
 
       Tu reçois :
-      1. L'image de la webcam (Image Cible).
-      2. Une liste de photos de référence de chaque collaborateur candidat, précédée de son identification sous le format "=== CANDIDAT : ID = {id}, Nom = {name} ===".
+      1. IMAGE CIBLE PRINCIPALE (Image webcam initiale).
+      2. IMAGE DÉFI DE VIVACITÉ (Optionnelle - Image capturée pendant le défi de sourire ou de clignement).
+      3. Liste des photos de référence de chaque collaborateur candidat, précédée de son identification sous le format "=== CANDIDAT : ID = {id}, Nom = {name} ===".
 
       Renvoie obligatoirement un objet JSON STRICTEMENT sous ce format :
       {
         "matchedId": "ID_DU_COLLABORATEUR_SÉLECTIONNÉ" ou "unknown",
         "score": un nombre entier entre 0 et 100 représentant la confiance de la correspondance (ne doit être >= 95 que s'il y a certitude absolue),
-        "reason": "Une explication détaillée en français justifiant pourquoi cette personne correspond de manière indiscutable, ou pourquoi aucun profil de la base ne correspond exactement (visage inconnu/intrus/utilisateur supprimé/ressemblance insuffisante)."
+        "reason": "Une explication détaillée en français justifiant la décision (ex. confirmation de vivacité neuromusculaire, détection de reflets LCD/OLED suspect, ou absence de correspondance biométrique valide)."
       }
       `;
 
       const parts: any[] = [
         { text: prompt },
-        { text: "=== IMAGE CIBLE (WEBCAM) ===" },
+        { text: "=== IMAGE CIBLE PRINCIPALE ===" },
         {
           inlineData: {
             mimeType: parsedWebcam.mimeType,
@@ -1095,25 +1102,59 @@ async function startServer() {
         }
       ];
 
-      // Récupérer et encoder les images des candidats
+      if (parsedChallenge) {
+        parts.push({ text: "=== IMAGE DÉFI DE VIVACITÉ ===" });
+        parts.push({
+          inlineData: {
+            mimeType: parsedChallenge.mimeType,
+            data: parsedChallenge.data
+          }
+        });
+      }
+
+      // Récupérer et encoder les images des candidats (avec support multi-angles haute sécurité)
       for (const cand of candidates) {
-        let partData = null;
-        if (cand.photo) {
+        parts.push({ text: `=== CANDIDAT : ID = ${cand.id}, Nom = ${cand.firstName} ${cand.lastName} ===` });
+        let addedAny = false;
+
+        // Si l'employé possède un gabarit multi-angles complet
+        if (cand.photoAngles) {
+          const angles = ['front', 'profile', 'smile', 'blink'] as const;
+          for (const angle of angles) {
+            const imgData = cand.photoAngles[angle];
+            if (imgData) {
+              const parsed = parseDataUrl(imgData);
+              if (parsed) {
+                parts.push({ text: `ANGLE DE RÉFÉRENCE COMPLIANT : ${angle.toUpperCase()}` });
+                parts.push({
+                  inlineData: {
+                    mimeType: parsed.mimeType,
+                    data: parsed.data
+                  }
+                });
+                addedAny = true;
+              }
+            }
+          }
+        }
+
+        // Sinon, fallback sur le portrait principal unique
+        if (!addedAny && cand.photo) {
+          let partData = null;
           if (cand.photo.startsWith('data:')) {
             partData = parseDataUrl(cand.photo);
           } else if (cand.photo.startsWith('http')) {
             partData = await fetchImageAsBase64(cand.photo);
           }
-        }
-
-        if (partData) {
-          parts.push({ text: `=== CANDIDAT : ID = ${cand.id}, Nom = ${cand.firstName} ${cand.lastName} ===` });
-          parts.push({
-            inlineData: {
-              mimeType: partData.mimeType,
-              data: partData.data
-            }
-          });
+          if (partData) {
+            parts.push({ text: "IMAGE PORTRAIT PRINCIPALE" });
+            parts.push({
+              inlineData: {
+                mimeType: partData.mimeType,
+                data: partData.data
+              }
+            });
+          }
         }
       }
 

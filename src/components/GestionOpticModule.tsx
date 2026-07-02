@@ -117,11 +117,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
             id: storeIdFallback,
             name: b.name.replace(/Boutique/g, 'Agence'),
             country: b.zone_id === 'ZONE-UEMOA' ? 'Zone Ouest' : b.zone_id === 'ZONE-CEMAC' ? 'Zone Centrale' : 'Zone Nord',
-            items: [
-              { name: 'Ray-Ban Wayfarer Classic', type: 'Monture', sku: 'RB2140-50', qty: 15, spec: 'Acétate, Noir Polished' },
-              { name: 'Varilux Physio Eye-protect', type: 'Verre', sku: 'VX-PHY-167', qty: 38, spec: 'Index 1.67, Organique' },
-              { name: 'Transitions Gen S Photochromic', type: 'Option', sku: 'TRT-GENS-GY', qty: 50, spec: 'Activation ultra-rapide' }
-            ]
+            items: []
           };
         });
       }
@@ -136,31 +132,19 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
         id: 'store-dk',
         name: 'Agence Alpha',
         country: 'Zone Ouest',
-        items: [
-          { name: 'Ray-Ban Wayfarer Classic', type: 'Monture', sku: 'RB2140-50', qty: 15, spec: 'Acétate, Noir Polished' },
-          { name: 'Varilux Physio Eye-protect', type: 'Verre', sku: 'VX-PHY-167', qty: 38, spec: 'Index 1.67, Organique' },
-          { name: 'Transitions Gen S Photochromic', type: 'Option', sku: 'TRT-GENS-GY', qty: 50, spec: 'Activation ultra-rapide' }
-        ]
+        items: []
       },
       {
         id: 'store-ab',
         name: 'Agence Bêta',
         country: 'Zone Ouest',
-        items: [
-          { name: 'Ray-Ban Wayfarer Classic', type: 'Monture', sku: 'RB2140-50', qty: 8, spec: 'Acétate, Noir Polished' },
-          { name: 'Varilux Physio Eye-protect', type: 'Verre', sku: 'VX-PHY-167', qty: 12, spec: 'Index 1.67, Organique' },
-          { name: 'Transitions Gen S Photochromic', type: 'Option', sku: 'TRT-GENS-GY', qty: 25, spec: 'Activation ultra-rapide' }
-        ]
+        items: []
       },
       {
         id: 'store-lm',
         name: 'Agence Gamma',
         country: 'Zone Ouest',
-        items: [
-          { name: 'Ray-Ban Wayfarer Classic', type: 'Monture', sku: 'RB2140-50', qty: 12, spec: 'Acétate, Noir Polished' },
-          { name: 'Varilux Physio Eye-protect', type: 'Verre', sku: 'VX-PHY-167', qty: 20, spec: 'Index 1.67, Organique' },
-          { name: 'Transitions Gen S Photochromic', type: 'Option', sku: 'TRT-GENS-GY', qty: 15, spec: 'Activation ultra-rapide' }
-        ]
+        items: []
       }
     ];
   });
@@ -182,11 +166,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                 id: storeIdFallback,
                 name: b.name.replace(/Boutique/g, 'Agence'),
                 country: b.zone_id === 'ZONE-UEMOA' ? 'Zone Ouest' : b.zone_id === 'ZONE-CEMAC' ? 'Zone Centrale' : 'Zone Nord',
-                items: [
-                  { name: 'Ray-Ban Wayfarer Classic', type: 'Monture', sku: 'RB2140-50', qty: 15, spec: 'Acétate, Noir Polished' },
-                  { name: 'Varilux Physio Eye-protect', type: 'Verre', sku: 'VX-PHY-167', qty: 38, spec: 'Index 1.67, Organique' },
-                  { name: 'Transitions Gen S Photochromic', type: 'Option', sku: 'TRT-GENS-GY', qty: 50, spec: 'Activation ultra-rapide' }
-                ]
+                items: []
               };
             }));
           }
