@@ -355,7 +355,8 @@ export default function PresenceModule({ currentLanguage, currentCompany, curren
           })
         });
 
-        if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (response.ok && contentType && contentType.includes('application/json')) {
           const result = await response.json();
           if (result && (result.matchedId === 'unknown' || !result.matchedId)) {
             setLivenessLogs(prev => [

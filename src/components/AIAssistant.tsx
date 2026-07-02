@@ -39,6 +39,11 @@ export default function AIAssistant({ onAddGeneratedFiles }: AIAssistantProps) {
         body: JSON.stringify({ prompt: activePrompt }),
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Le serveur a renvoyé une page invalide (HTML). Veuillez vérifier que le serveur Node.js d\'Optic Alizé est actif sur Hostinger.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
