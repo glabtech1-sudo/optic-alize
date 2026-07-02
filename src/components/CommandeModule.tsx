@@ -158,17 +158,9 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
       try {
         const parsed = JSON.parse(local);
         if (Array.isArray(parsed)) return parsed;
-      } catch (e) {
-        // ignore fallback
-      }
+      } catch (e) {}
     }
-    return [
-      { id: 'c1-2358', firstName: 'Jean-Marc', lastName: 'Koffi', email: 'jm.koffi@gmail.com', phone: '77 124 55 93', ssNo: '1850975123456', birthDate: '1985-09-12', branch: 'Paris Nation', loyaltyPoints: 340, ssnMutuelle: 'MG-PREV-2350', statusMutuelle: 'Approved', location: 'Dépôt Central' },
-      { id: 'c2-9011', firstName: 'Amelie', lastName: 'Provost', email: 'amelie.p@orange.fr', phone: '6 45 12 89 23', ssNo: '2901275654321', birthDate: '1990-12-11', branch: 'Paris Nation', loyaltyPoints: 120, ssnMutuelle: 'MGEN-9011A', statusMutuelle: 'Approved', location: 'Dépôt Central' },
-      { id: 'c3-1303', firstName: 'Sarah', lastName: 'El-Amri', email: 'sarah.e@yahoo.fr', phone: '6 89 54 12 36', ssNo: '2940213765432', birthDate: '1994-02-14', branch: 'Lyon Bellecour', loyaltyPoints: 850, ssnMutuelle: 'HARMONIE-1303', statusMutuelle: 'Pending', location: 'Dépôt Central' },
-      { id: 'c4-8402', firstName: 'Mamadi', lastName: 'Diarra', email: 'mamadi.d@outlook.com', phone: '77 455 12 12', ssNo: '1790456123789', birthDate: '1979-04-18', branch: 'Marseille Vieux-Port', loyaltyPoints: 410, ssnMutuelle: 'APICIL-8402', statusMutuelle: 'Approved', location: 'Dépôt Central' },
-      { id: 'c5-9204', firstName: 'Awa', lastName: 'Niang', email: 'awa.niang@univ.sn', phone: '70 123 45 67', ssNo: '2890524789564', birthDate: '1989-05-24', branch: 'Bordeaux Centre', loyaltyPoints: 950, ssnMutuelle: 'IPRES-9204B', statusMutuelle: 'Approved', location: 'Dépôt Central' }
-    ];
+    return [];
   });
   
   const [formPatientIndex, setFormPatientIndex] = useState<number>(0);

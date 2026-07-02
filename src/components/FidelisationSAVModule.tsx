@@ -62,56 +62,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-    return [
-      { 
-        id: 'CMD-2350', 
-        customer: 'Hélène Dubois-Chambery', 
-        date: '2026-06-10', 
-        lensesType: 'Varilux Physio Eye-protect HMC',
-        frameModel: 'Ray-Ban Wayfarer Classic', 
-        quantity: 1, 
-        totalFCFA: 244000, 
-        amountPaid: 244000,
-        paymentMode: 'full',
-        productionDelay: '5 jours',
-        status: 'finalized', 
-        optician: 'Abdoulaye Ndiaye',
-        prescriptionDetails: 'OD: -1.75 OS: -1.50'
-      },
-      { 
-        id: 'CMD-2349', 
-        customer: 'Jean-Pierre Gomez-Viguier', 
-        date: '2026-06-10', 
-        lensesType: 'Progressifs Varilux Physio F-360',
-        frameModel: 'Oakley Holbrook Sport', 
-        quantity: 1, 
-        totalFCFA: 363000, 
-        amountPaid: 200000,
-        paymentMode: 'installments',
-        productionDelay: '7 jours',
-        status: 'in_progress', 
-        optician: 'Fatou Soumaré',
-        prescriptionDetails: 'OD: +2.50 OS: +2.25'
-      },
-      { 
-        id: 'CMD-2348', 
-        customer: 'Sarah El-Amri', 
-        date: '2026-06-09', 
-        lensesType: 'SmartLife Progressive Platinum',
-        frameModel: 'Chanel Cat-Eye Signature', 
-        quantity: 1, 
-        totalFCFA: 420000, 
-        amountPaid: 420000,
-        paymentMode: 'full',
-        productionDelay: '4 jours',
-        status: 'finalized', 
-        optician: 'Abdoulaye Ndiaye',
-        prescriptionDetails: 'OD: Plan OS: Plan'
-      }
-    ];
+    return [];
   });
 
   // Track credited order IDs to prevent fraud and double counting

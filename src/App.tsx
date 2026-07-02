@@ -921,42 +921,70 @@ export default function App() {
 
                 {/* User Profile dropdown */}
                 <div className="relative">
-                  <button
-                    onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                    className="flex items-center gap-2 cursor-pointer focus:outline-none"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-[#2563EB] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
-                      {currentUserEmail.slice(0, 2).toUpperCase()}
-                    </div>
-                    <span className="text-xs font-semibold text-slate-800 hidden sm:block">
-                      {currentUserEmail}
-                    </span>
-                  </button>
+                  {(() => {
+                    const matchedEmp = (hrEmployees || []).find((emp: any) => emp.email && emp.email.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
+                    const userAvatarUrl = matchedEmp?.photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUserEmail)}`;
+                    const userDisplayName = matchedEmp ? `${matchedEmp.firstName} ${matchedEmp.lastName}` : (currentUserEmail.includes('glabtech') ? 'Glabtech Administrator' : 'Anges Gildas Admin');
+                    const userRoleName = matchedEmp?.position || (currentUserEmail.includes('glabtech') ? 'SaaS Architect' : 'Directeur Général');
 
-                  <AnimatePresence>
-                    {showProfileDropdown && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
-                        className="absolute right-0 mt-3 w-56 rounded-xl border border-slate-150 p-3 shadow-xl z-50 bg-white"
-                      >
-                        <div className="p-2 border-b border-slate-100 text-xs">
-                          <p className="font-bold text-[#0F172A]">Glabtech Administrator</p>
-                          <p className="text-[10px] text-[#64748B] mt-0.5">Licence : SaaS Enterprise</p>
-                        </div>
-                        <div className="mt-1 space-y-0.5">
-                          <button
-                            onClick={handleLogout}
-                            className="w-full text-left px-2.5 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg font-bold cursor-pointer flex items-center gap-2"
+                    return (
+                      <>
+                        <button
+                          onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                          className="flex items-center gap-2 cursor-pointer focus:outline-none"
+                        >
+                          <img 
+                            src={userAvatarUrl} 
+                            alt="Profile" 
+                            className="w-8 h-8 rounded-xl object-cover shadow-xs border border-slate-200" 
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              // If image fails, replace with default initials styling inline
+                              (e.target as HTMLElement).style.display = 'none';
+                              const fallback = document.getElementById('avatar-fallback-initials');
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          <div 
+                            id="avatar-fallback-initials" 
+                            style={{ display: 'none' }}
+                            className="w-8 h-8 rounded-xl bg-[#2563EB] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm"
                           >
-                            <LogOut className="w-3.5 h-3.5 shrink-0" />
-                            <span>Déconnexion</span>
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                            {currentUserEmail.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-800 hidden sm:block">
+                            {userDisplayName}
+                          </span>
+                        </button>
+
+                        <AnimatePresence>
+                          {showProfileDropdown && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              className="absolute right-0 mt-3 w-56 rounded-xl border border-slate-150 p-3 shadow-xl z-50 bg-white"
+                            >
+                              <div className="p-2 border-b border-slate-100 text-xs text-left">
+                                <p className="font-bold text-[#0F172A]">{userDisplayName}</p>
+                                <p className="text-[10px] text-[#2563EB] font-bold mt-0.5">{userRoleName}</p>
+                                <p className="text-[9px] text-[#64748B] mt-0.5">Licence : SaaS Enterprise</p>
+                              </div>
+                              <div className="mt-1 space-y-0.5">
+                                <button
+                                  onClick={handleLogout}
+                                  className="w-full text-left px-2.5 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg font-bold cursor-pointer flex items-center gap-2"
+                                >
+                                  <LogOut className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Déconnexion</span>
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </>
+                    );
+                  })()}
                 </div>
 
               </div>

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+// @ts-ignore
+import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
 import { 
   CreditCard, Search, Percent, ShieldCheck, QrCode, Ticket, Check, Sparkles, 
   Printer, Coins, Landmark, PhoneCall, Gift, ShoppingBag, Plus, Minus, Trash2, 
@@ -541,7 +543,7 @@ export default function POSModule() {
     if (!lastCompletedOrder) return;
     const docTitle = `GLAB_Facture_${lastCompletedOrder.id}.html`;
     
-    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || '/src/assets/images/optic_alize_logo_1781336757710.jpg';
+    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || defaultLogo;
 
     const fileHtmlContent = `<!DOCTYPE html>
 <html lang="fr">

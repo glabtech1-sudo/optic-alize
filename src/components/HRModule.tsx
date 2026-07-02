@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+// @ts-ignore
+import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
 import { 
   Users, 
   Clock, 
@@ -1337,7 +1339,7 @@ export default function HRModule({
       return;
     }
 
-    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || '/src/assets/images/optic_alize_logo_1781336757710.jpg';
+    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || defaultLogo;
 
     const html = `
       <html>
@@ -1660,7 +1662,7 @@ export default function HRModule({
       return;
     }
 
-    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || '/src/assets/images/optic_alize_logo_1781336757710.jpg';
+    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || defaultLogo;
 
     const socRate = 8;
     const taxRate = 10;

@@ -339,22 +339,7 @@ export async function dbGetCustomers(companyId?: string): Promise<any[]> {
       console.error('Prisma query failed, using fallback:', e);
     }
   }
-  const fallbackList = readFallback('customers', [
-    {
-      id: 'OA-CL-001',
-      companyId: 'TG',
-      firstName: 'Jean-Claude',
-      lastName: 'Dossou',
-      birthDate: '1985-04-12',
-      email: 'jc.dossou@gmail.com',
-      phone: '+228 91 22 33 44',
-      ssn: '1850412228301',
-      registrationDate: '2026-01-15',
-      loyaltyTier: 'GOLD',
-      loyaltyPoints: 340,
-      branch: 'Optic Alizé - Dépôt Central'
-    }
-  ]);
+  const fallbackList = readFallback('customers', []);
   return companyId ? fallbackList.filter((c: any) => c.companyId === companyId) : fallbackList;
 }
 
@@ -426,9 +411,7 @@ export async function dbGetProducts(companyId?: string): Promise<any[]> {
       console.error('Prisma query failed, using fallback:', e);
     }
   }
-  const fallbackList = readFallback('products', [
-    { id: 'FC-101', companyId: 'TG', name: 'Ray-Ban Wayfarer Classic (RB2140)', brand: 'Luxottica', category: 'Montures', price: 104000, barcode: '805289122012', icon: '🕶️' }
-  ]);
+  const fallbackList = readFallback('products', []);
   return companyId ? fallbackList.filter((p: any) => p.companyId === companyId) : fallbackList;
 }
 
@@ -588,10 +571,7 @@ export async function dbGetSuppliers(companyId?: string): Promise<any[]> {
       console.error('Prisma query failed for suppliers:', e);
     }
   }
-  const fallbackList = readFallback('suppliers', [
-    { id: 'SUP-01', companyId: 'TG', name: 'Luxottica France', contactName: 'M. Dubois', email: 'dubois@luxottica.fr', phone: '+33 1 40 00 01 02', address: 'Paris, France' },
-    { id: 'SUP-02', companyId: 'BJ', name: 'Optic Gros Bénin', contactName: 'Mme. Lawson', email: 'lawson@opticgros.bj', phone: '+229 21 30 40 50', address: 'Cotonou, Bénin' }
-  ]);
+  const fallbackList = readFallback('suppliers', []);
   return companyId ? fallbackList.filter((s: any) => s.companyId === companyId) : fallbackList;
 }
 
@@ -651,10 +631,7 @@ export async function dbGetInventory(companyId?: string): Promise<any[]> {
       console.error('Prisma query failed for inventory:', e);
     }
   }
-  const fallbackList = readFallback('inventory', [
-    { id: 'INV-01', companyId: 'TG', branchId: 'BOU-01', productId: 'FC-101', quantity: 45, minStock: 5 },
-    { id: 'INV-02', companyId: 'BJ', branchId: 'BOU-02', productId: 'FC-101', quantity: 12, minStock: 3 }
-  ]);
+  const fallbackList = readFallback('inventory', []);
   return companyId ? fallbackList.filter((i: any) => i.companyId === companyId) : fallbackList;
 }
 

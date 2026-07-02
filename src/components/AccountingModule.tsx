@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+// @ts-ignore
+import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
 import { 
   Building2, 
   Wallet, 
@@ -651,7 +653,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
       return;
     }
 
-    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || '/src/assets/images/optic_alize_logo_1781336757710.jpg';
+    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || defaultLogo;
 
     const title = reportTab === 'journal' ? "Brouillard de Journal Général" :
                   reportTab === 'grand_livre' ? "Grand Livre Général" :
@@ -971,7 +973,7 @@ export async function getAccountingSummary(req: Request, res: Response) {
       return;
     }
 
-    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || '/src/assets/images/optic_alize_logo_1781336757710.jpg';
+    const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || defaultLogo;
 
     const socRate = 8;
     const taxRate = 10;

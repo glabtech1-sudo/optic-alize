@@ -44,41 +44,11 @@ export interface ComponentItem {
 }
 
 // --- Initial Seed Data ---
-const INITIAL_CUSTOMERS: Customer[] = [
-  { id: 'OA-CL-001', name: 'Hélène Dubois-Chambery', phone: '06 12 45 78 90', email: 'helene.dubois@gmail.com', loyaltyTier: 'PREMIUM', lastVisit: '2026-06-02', branch: 'Paris Nation' },
-  { id: 'OA-CL-002', name: 'Jean-Pierre Gomez-Viguier', phone: '06 91 82 73 64', email: 'jp.gomez@orange.fr', loyaltyTier: 'VIP', lastVisit: '2026-05-28', branch: 'Lyon Bellecour' },
-  { id: 'OA-CL-003', name: 'Sarah El-Amri', phone: '07 81 29 45 61', email: 'sarah.amri@live.fr', loyaltyTier: 'REGULAR', lastVisit: '2026-06-10', branch: 'Marseille Vieux-Port' },
-  { id: 'OA-CL-004', name: 'Mamadi Diarra', phone: '+228 90 12 34 56', email: 'm.diarra@gmail.com', loyaltyTier: 'REGULAR', lastVisit: '2026-06-08', branch: 'Paris Nation' },
-  { id: 'OA-CL-005', name: 'Awa Niang', phone: '+228 91 45 67 89', email: 'awa.niang@hotmail.com', loyaltyTier: 'VIP', lastVisit: '2026-06-11', branch: 'Lyon Bellecour' }
-];
+const INITIAL_CUSTOMERS: Customer[] = [];
 
-const INITIAL_VOUCHERS: StockVoucher[] = [
-  { id: 'VCH-001', type: 'ENTREE', reference: 'BE-2026-094', date: '2026-06-10', partner: 'Luxottica Group International', itemsCount: 45, totalValueFCFA: 3450000, status: 'Validé', notes: 'Import direct de montures solaires été.' },
-  { id: 'VCH-002', type: 'SORTIE', reference: 'BS-2026-042', date: '2026-06-11', partner: 'Atelier Central G-LAB', itemsCount: 6, totalValueFCFA: 850000, status: 'Terminé', notes: 'Mise en meulage pour commandes urgentes.' },
-  { id: 'VCH-003', type: 'COMMANDE', reference: 'BC-2026-112', date: '2026-06-09', partner: 'Essilor France SAS', itemsCount: 150, totalValueFCFA: 12000000, status: 'En attente', notes: 'Verres progressifs complexes en cours d\'importation.' },
-  { id: 'VCH-004', type: 'DISTRIBUTION', reference: 'DS-2026-015', date: '2026-06-08', partner: 'Succursale G-LAB Centre', itemsCount: 20, totalValueFCFA: 1800000, status: 'Terminé', notes: 'Réapprovisionnement de montures montantes.' },
-  { id: 'VCH-005', type: 'TRANSFERT', reference: 'TR-2026-008', date: '2026-06-11', partner: 'Boutique Gamma', itemsCount: 12, totalValueFCFA: 1440000, status: 'En Transit', notes: 'Série limitée Ray-Ban Ferrari.' },
-  { id: 'VCH-006', type: 'RETOUR', reference: 'BR-2026-003', date: '2026-06-05', partner: 'Safilo Group Paris', itemsCount: 5, totalValueFCFA: 650000, status: 'Validé', notes: 'Retours de montures défectueuses sous garantie.' }
-];
+const INITIAL_VOUCHERS: StockVoucher[] = [];
 
-export const INITIAL_COMPONENTS: ComponentItem[] = [
-  // Montures
-  { id: 'CMP-101', type: 'MONTURE', name: 'Ray-Ban Wayfarer Classic', brand: 'Luxottica', sku: 'RB2140-50', stock: 18, priceFCFA: 104000, spec: 'Acétate, Noir Polished, Verres Verts' },
-  { id: 'CMP-102', type: 'MONTURE', name: 'Oakley Holbrook Sport', brand: 'Luxottica', sku: 'OO9102-H4', stock: 12, priceFCFA: 123000, spec: 'O-Matter, Noir Brume, Prisme Saphir' },
-  { id: 'CMP-103', type: 'MONTURE', name: 'Chanel Cat-Eye Signature', brand: 'Chanel', sku: 'CH3422', stock: 7, priceFCFA: 210000, spec: 'Métal Doré & Strass, Fine Branches' },
-  // Accessoires
-  { id: 'CMP-201', type: 'ACCESSOIRE', name: 'Étui Rigide Luxe G-LAB', brand: 'G-LAB Optique', sku: 'BOX-LUX-01', stock: 150, priceFCFA: 5000, spec: 'Similicuir Cuir Grainé, Doublure Velours' },
-  { id: 'CMP-202', type: 'ACCESSOIRE', name: 'Spray Optique Anti-buée 50ml', brand: 'LensCleaner', sku: 'SPY-AB-50', stock: 95, priceFCFA: 3500, spec: 'Formule non grasse, Tous verres traités' },
-  { id: 'CMP-203', type: 'ACCESSOIRE', name: 'Cordon Sport Néoprène Flottant', brand: 'Chums', sku: 'CRD-SP-BL', stock: 40, priceFCFA: 4500, spec: 'Matière élastique imperméable, Bleu Roi' },
-  // Verres
-  { id: 'CMP-301', type: 'VERRE', name: 'Varilux Physio Eye-protect HMC', brand: 'Essilor', sku: 'VX-PHY-167', stock: 68, priceFCFA: 140000, spec: 'Index 1.67, Organique, Antireflet multicouche' },
-  { id: 'CMP-302', type: 'VERRE', name: 'SmartLife Progressive Platinum', brand: 'Zeiss', sku: 'ZS-SLP-160', stock: 34, priceFCFA: 95000, spec: 'Index 1.60, Polycarbonate, Protection UV totale' },
-  { id: 'CMP-303', type: 'VERRE', name: 'Unifocal Standard Durci', brand: 'G-LAB Glass', sku: 'GLB-UNI-150', stock: 240, priceFCFA: 15000, spec: 'Index 1.50, Organique Basique, Traitement anti-rayure' },
-  // Traitements
-  { id: 'CMP-401', type: 'TRAITEMENT', name: 'Filtre Anti-Lumière Bleue Intense', brand: 'G-LAB Lab', sku: 'TRT-BLUE-01', stock: 999, priceFCFA: 8000, spec: 'Nano-couche absorbante pour écrans numériques' },
-  { id: 'CMP-402', type: 'TRAITEMENT', name: 'Photochromique Transitions Gen S', brand: 'Transitions', sku: 'TRT-GENS-GY', stock: 999, priceFCFA: 25000, spec: 'Activation ultra-rapide au soleil, Teinte Gris' },
-  { id: 'CMP-403', type: 'TRAITEMENT', name: 'Polarisé Xperio Sun Haute Intensité', brand: 'Essilor', sku: 'TRT-XPE-BR', stock: 999, priceFCFA: 32000, spec: 'Élimination des reflets éblouissants, Teinte Brun' }
-];
+export const INITIAL_COMPONENTS: ComponentItem[] = [];
 
 interface GestionOpticModuleProps {
   currentLanguage?: 'FR' | 'EN';
