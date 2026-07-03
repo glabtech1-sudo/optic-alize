@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Shield, User, Database, Key, HelpCircle, Save, Check, AlertCircle, AlertTriangle, Trash2, Users, Globe, RefreshCw, Loader2, Palette, Cloud, Building2, Layers, Code, Zap, Sparkles, Sliders, Terminal, FolderOpen, Smartphone, ShieldCheck, Cpu, HardDrive, Filter, Activity } from 'lucide-react';
 import SaaSUsers from './SaaSUsers';
+import StorageManager from './StorageManager';
+import BackupManager from './BackupManager';
 import { setupUserMFA, fetchUserProfile } from '../lib/api';
 import SuperAdminHQModule from './SuperAdminHQModule';
 import ArchitectureBlueprint from './ArchitectureBlueprint';
@@ -428,12 +430,13 @@ export default function SaaSSettings({
             { id: 'sauvegarde', label: currentLanguage === 'FR' ? 'Sauvegarde & Backups' : 'Database Backups', icon: <Cloud className="w-4 h-4 shrink-0" /> },
             { id: 'themes', label: currentLanguage === 'FR' ? 'Thèmes & Langues' : 'Themes & Languages', icon: <Palette className="w-4 h-4 shrink-0" /> },
             { id: 'security', label: currentLanguage === 'FR' ? 'Sécurité & MFA' : 'Security & MFA', icon: <Shield className="w-4 h-4 shrink-0" /> },
+            { id: 'storage', label: currentLanguage === 'FR' ? 'Stockage Cloud & Fichiers' : 'Cloud Storage & Files', icon: <FolderOpen className="w-4 h-4 shrink-0 text-indigo-600" /> },
             { id: 'api', label: currentLanguage === 'FR' ? "Clefs API d'Intégration" : "API Keys & Integrations", icon: <Key className="w-4 h-4 shrink-0" /> },
             { id: 'super_admin_hq', label: currentLanguage === 'FR' ? 'Console Siège HQ (Admin)' : 'HQ Headquarters Terminal (Admin)', icon: <Building2 className="w-4 h-4 shrink-0" /> },
             { id: 'dev_portal', label: currentLanguage === 'FR' ? 'Portail Dev & Blueprints' : 'Dev Portal & Blueprints', icon: <Code className="w-4 h-4 shrink-0 text-emerald-600" /> }
           ].filter(category => {
             if (userHasAllRights) return true;
-            return category.id === 'profile';
+            return category.id === 'profile' || category.id === 'storage';
           }).map(category => (
             <button
               key={category.id}
@@ -526,8 +529,18 @@ export default function SaaSSettings({
             </div>
           )}
 
+          {/* SECURE STORAGE MANAGER WORKSPACE */}
+          {activeSettingsCategory === 'storage' && (
+            <div className="p-6 rounded-3xl bg-white shadow-xs border border-slate-150">
+              <StorageManager 
+                currentLanguage={currentLanguage} 
+                darkMode={darkMode}
+              />
+            </div>
+          )}
+
           {/* OTHER SUB-SETTINGS FORMS BLOCK */}
-          {activeSettingsCategory !== 'super_admin_hq' && activeSettingsCategory !== 'dev_portal' && (
+          {activeSettingsCategory !== 'super_admin_hq' && activeSettingsCategory !== 'dev_portal' && activeSettingsCategory !== 'storage' && (
             <div className={`p-6 rounded-xl bg-white text-xs`}>
               <form onSubmit={handleSaveSettings} className="space-y-6">
                 
@@ -705,160 +718,12 @@ export default function SaaSSettings({
                       <h3 className="text-sm font-bold uppercase tracking-wider text-[#64748B]">
                         {currentLanguage === 'FR' ? "Sauvegarde & Restauration" : "Backup & Restoration Hub"}
                       </h3>
-                      <p className="text-xs text-[#64748B]">
+                      <p className="text-xs text-[#64748B] mb-4">
                         {currentLanguage === 'FR' ? "Gérez les sauvegardes à chaud de la base de données PostgreSQL de production." : "Manage non-blocking hot backups of the cloud database."}
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Dernière sauvegarde</span>
-                        <span className="text-sm font-black mt-1 block text-slate-800">{lastBackupTime}</span>
-                      </div>
-                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Volume de données</span>
-                        <span className="text-sm font-black mt-1 block text-slate-800">{backupSize}</span>
-                      </div>
-                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Sauvegarde Automatique</span>
-                        <span className="text-xs font-bold text-emerald-600 mt-1 block flex items-center gap-1">
-                          ● Activé (Journalier)
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center justify-between">
-                      <div className="space-y-1 pr-4 text-left">
-                        <span className="text-xs font-bold block text-blue-900">Forcer une sauvegarde manuelle réactive</span>
-                        <p className="text-[10px] text-blue-750 leading-relaxed">
-                          Crée instantanément une archive de la base de données synchronisée avec les serveurs Cloud Run. Vous pouvez la restaurer ou la télécharger à tout moment au format SQL / JSON.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={triggerManualBackup}
-                        disabled={backingUp}
-                        className="shrink-0 bg-blue-605 hover:bg-blue-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs transition cursor-pointer select-none flex items-center gap-1.5 disabled:opacity-50"
-                      >
-                        {backingUp ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Création...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            <span>Lancer</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Progressive Web App (PWA) Client Suite */}
-                    <div className="p-4 bg-cyan-50/40 border border-cyan-150 rounded-xl space-y-3 font-sans">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-600 shrink-0">
-                          <Smartphone className="w-4.5 h-4.5" />
-                        </div>
-                        <div className="text-left">
-                          <span className="text-xs font-black block text-cyan-900 leading-tight">
-                            {currentLanguage === 'FR' ? "Suite Client Progressive Web App (PWA)" : "Progressive Web App (PWA) Client Suite"}
-                          </span>
-                          <p className="text-[10px] text-cyan-850 leading-snug mt-0.5">
-                            {currentLanguage === 'FR' 
-                              ? "L'application Optic Alizé intègre un moteur de service worker local autonome pour garantir une fluidité d'exécution et un fonctionnement hors-ligne optimal." 
-                              : "Optic Alize features a built-in Service Worker to enable offline execution and robust performance on any platform."}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="pt-2.5 border-t border-cyan-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-                        <div>
-                          <span className="text-[9px] font-bold text-cyan-700 block uppercase">Moteur de Cache Local</span>
-                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            {currentLanguage === 'FR' ? "Actif (Stale-While-Revalidate)" : "Active (Stale-While-Revalidate)"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[9px] font-bold text-cyan-700 block uppercase">Mode Autonome Installable</span>
-                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            {currentLanguage === 'FR' ? "Prêt pour iOS Safari / macOS / Android Chrome" : "iOS Safari / Android Chrome ready"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="p-3 bg-white/60 rounded-xl border border-cyan-100 text-left space-y-2">
-                        <span className="text-[10px] font-black text-cyan-900 block uppercase">
-                          {currentLanguage === 'FR' ? "💡 Guide d'installation rapide" : "💡 Installation Guidelines"}
-                        </span>
-                        <ul className="text-[10px] text-cyan-950 space-y-1.5 leading-relaxed pl-3 list-disc font-medium">
-                          <li>
-                            <strong>Google Chrome / Edge (PC/Mac) :</strong> 
-                            {currentLanguage === 'FR' ? " Cliquez sur le bouton d'installation [INSTALLER] apparaissant en haut dans la barre d'entête de l'application." : " Use the [INSTALL] button at the top header of the workspace."}
-                          </li>
-                          <li>
-                            <strong>Safari (iPhone / iPad) :</strong> 
-                            {currentLanguage === 'FR' ? " Appuyez sur le menu de partage de Safari (icône flèche sortante) puis choisissez 'Sur l'écran d'accueil'." : " Press Safari share button, select 'Add to Home Screen' option."}
-                          </li>
-                          <li>
-                            <strong>Chrome / Samsung (Android) :</strong> 
-                            {currentLanguage === 'FR' ? " Appuyez sur les trois points verticaux en haut à droite de Chrome puis sélectionnez 'Installer l'application'." : " Click browser dots, choose 'Install application'."}
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-red-50/40 border border-red-100 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="space-y-1 text-left">
-                        <span className="text-xs font-bold block text-red-900 flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 animate-pulse" />
-                          {currentLanguage === 'FR' ? "Réinitialisation complète à blanc" : "Full Core Database Wipe"}
-                        </span>
-                        <p className="text-[10px] text-red-750 leading-relaxed max-w-xl">
-                          {currentLanguage === 'FR' 
-                            ? "Efface définitivement toutes les transactions de caisse (ventes), fiches cliniques, ordonnances de verres, fiches d'atelier, plannings de présence, stocks de pièces, SAV et comptes de dépenses. Vous conservez uniquement vos identifiants administrateurs."
-                            : "Deletes all checkout operations, clinical refractions, lenses prescriptions, lab worksheets, attendance schedules, inventory parts, SAV requests, and expense books. Admin user accounts are preserved."}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleSystemWipe}
-                        className="shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition cursor-pointer select-none flex items-center gap-1.5"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>{currentLanguage === 'FR' ? "Effacer toutes les données" : "Clear All Data"}</span>
-                      </button>
-                    </div>
-
-                    <div className="space-y-2 pt-2">
-                      <span className="text-xs font-bold text-[#0F172A] uppercase tracking-wider block">Historique récent des sauvegardes</span>
-                      <div className="overflow-hidden border border-slate-150 rounded-xl bg-white text-xs">
-                        <table className="w-full text-left">
-                          <thead className="bg-slate-50 font-semibold text-slate-500 border-b border-slate-150">
-                            <tr>
-                              <th className="p-2.5 pl-4">ID Archive</th>
-                              <th className="p-2.5">Date & Heure</th>
-                              <th className="p-2.5">Type</th>
-                              <th className="p-2.5">Taille</th>
-                              <th className="p-2.5 pr-4 text-right">Statut</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                            {backupHistory.map(b => (
-                              <tr key={b.id} className="hover:bg-slate-50/50">
-                                <td className="p-2.5 pl-4 font-bold text-slate-705">{b.id}</td>
-                                <td className="p-2.5 text-slate-550">{b.date}</td>
-                                <td className="p-2.5"><span className="px-1.5 py-0.5 rounded bg-slate-100 font-sans font-semibold text-[10px] text-slate-600">{b.type}</span></td>
-                                <td className="p-2.5 font-bold text-slate-700">{b.size}</td>
-                                <td className="p-2.5 pr-4 text-right text-emerald-600 font-bold font-sans">✓ Succès</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                    <BackupManager currentLanguage={currentLanguage} darkMode={darkMode} />
                   </div>
                 )}
 

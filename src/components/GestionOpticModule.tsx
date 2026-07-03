@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { fetchCustomers, saveCustomer, fetchProducts, saveProduct, deleteCustomer, deleteProduct } from '../lib/api';
 import { 
   FolderLock, UserCheck, Plus, Search, Filter, ArrowUpRight, ArrowDownLeft, 
   Truck, CornerUpLeft, ClipboardList, RefreshCw, BarChart2, Layers, 
@@ -215,13 +216,12 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
       return;
     }
 
-    // Deduct from General Stock
-    setComponentsList(prev => prev.map(c => {
-      if (c.sku === supplySku) {
-        return { ...c, stock: c.stock - val };
-      }
-      return c;
-    }));
+    // Deduct and sync to PostgreSQL Database
+    const updatedComp = {
+      ...targetComp,
+      stock: Math.max(0, targetComp.stock - val)
+    };
+    syncProductToDb(updatedComp);
 
     // Add to Boutique Stock
     const updated = boutiqueStocks.map(store => {
@@ -325,111 +325,42 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
 
   // Interactive local states (seeded with default) - cleared for sandbox tests
   // Synchronized Customer List (Binds with CRM Module)
-  const [customersList, setCustomersList] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem('optic_crm_customers');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((c: any) => ({
-            id: c.id,
-            name: c.name || `${c.firstName} ${c.lastName || ''}`.trim(),
-            phone: c.phone || '',
-            email: c.email || '',
-            loyaltyTier: (c.loyaltyTier === 'REGULAR' || c.loyaltyTier === 'STANDARD' ? 'REGULAR' : c.loyaltyTier) as any,
-            lastVisit: c.lastVisit || c.registrationDate || new Date().toISOString().substring(0, 10),
-            branch: c.branch || 'Paris Nation',
-            ssn: c.ssn || ''
-          }));
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
+  const [customersList, setCustomersList] = useState<Customer[]>([]);
+  const [componentsList, setComponentsList] = useState<ComponentItem[]>([]);
 
-  // Bidirectional Save Sync
+  const loadData = React.useCallback(() => {
+    fetchCustomers().then(data => {
+      setCustomersList(data.map((c: any) => ({
+        id: c.id,
+        name: c.name || `${c.firstName} ${c.lastName || ''}`.trim(),
+        phone: c.phone || '',
+        email: c.email || '',
+        loyaltyTier: (c.loyaltyTier === 'REGULAR' || c.loyaltyTier === 'STANDARD' ? 'REGULAR' : c.loyaltyTier) as any,
+        lastVisit: c.lastVisit || c.registrationDate || new Date().toISOString().substring(0, 10),
+        branch: c.branch || 'Paris Nation',
+        ssn: c.ssn || ''
+      })));
+    }).catch(err => console.error("Failed to fetch customers in GestionOpticModule:", err));
+
+    fetchProducts().then(data => {
+      setComponentsList(data.map((p: any) => ({
+        id: p.id,
+        type: p.category as any,
+        name: p.name,
+        brand: p.brand,
+        sku: p.barcode || p.id,
+        stock: 999, // default general stock if not specified
+        priceFCFA: p.price,
+        spec: p.icon || 'Standard optique calibré'
+      })));
+    }).catch(err => console.error("Failed to fetch products in GestionOpticModule:", err));
+  }, []);
+
   React.useEffect(() => {
-    const savedCrm = localStorage.getItem('optic_crm_customers');
-    let crmCustomers: any[] = [];
-    if (savedCrm) {
-      try {
-        crmCustomers = JSON.parse(savedCrm);
-      } catch (e) {}
-    }
-    if (!Array.isArray(crmCustomers)) {
-      crmCustomers = [];
-    }
-
-    let changed = false;
-
-    // Filter out customers from CRM that are no longer in our customersList
-    const filteredCrm = crmCustomers.filter((ccObj: any) => {
-      const existsInLocal = customersList.some(cl => cl.id === ccObj.id);
-      if (!existsInLocal) {
-        changed = true;
-        return false;
-      }
-      return true;
-    });
-
-    const updatedCrm = filteredCrm.map((ccObj: any) => {
-      const match = customersList.find(cl => cl.id === ccObj.id);
-      if (match) {
-        const nameParts = match.name.split(' ');
-        const fName = nameParts[0] || '';
-        const lName = nameParts.slice(1).join(' ') || '';
-        if (
-          ccObj.firstName !== fName ||
-          ccObj.lastName !== lName ||
-          ccObj.phone !== match.phone ||
-          ccObj.email !== match.email ||
-          ccObj.branch !== match.branch ||
-          ccObj.ssn !== match.ssn
-        ) {
-          changed = true;
-          return {
-            ...ccObj,
-            firstName: fName,
-            lastName: lName,
-            phone: match.phone,
-            email: match.email,
-            branch: match.branch || 'Paris Nation',
-            ssn: match.ssn || ccObj.ssn
-          };
-        }
-      }
-      return ccObj;
-    });
-
-    // Check for any new customers added in GestionOptic that aren't in CRM yet
-    customersList.forEach(cl => {
-      if (!updatedCrm.some(cc => cc.id === cl.id)) {
-        changed = true;
-        const nameParts = cl.name.split(' ');
-        const fName = nameParts[0] || 'Client';
-        const lName = nameParts.slice(1).join(' ') || 'Nouveau';
-        updatedCrm.push({
-          id: cl.id,
-          firstName: fName,
-          lastName: lName,
-          birthDate: '1990-01-01',
-          email: cl.email || 'aucun-email@opticalize.com',
-          phone: cl.phone,
-          ssn: cl.ssn || 'Non spécifiée',
-          registrationDate: new Date().toISOString().substring(0, 10),
-          loyaltyPoints: cl.loyaltyTier === 'VIP' ? 1000 : 0,
-          branch: cl.branch || 'Paris Nation',
-          prescriptions: [],
-          purchases: [],
-          payments: []
-        });
-      }
-    });
-
-    if (changed || crmCustomers.length !== updatedCrm.length) {
-      localStorage.setItem('optic_crm_customers', JSON.stringify(updatedCrm));
-    }
-  }, [customersList]);
+    loadData();
+    const interval = setInterval(loadData, 5000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   const [transferringCustomer, setTransferringCustomer] = useState<Customer | null>(null);
   const [transferTargetBranch, setTransferTargetBranch] = useState<string>('Paris Nation');
@@ -453,24 +384,9 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     return [];
   });
 
-  const [componentsList, setComponentsList] = useState<ComponentItem[]>(() => {
-    const saved = localStorage.getItem('optic_components_list');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return [];
-  });
-
   React.useEffect(() => {
     localStorage.setItem('optic_vouchers_list', JSON.stringify(vouchersList));
   }, [vouchersList]);
-
-  React.useEffect(() => {
-    localStorage.setItem('optic_components_list', JSON.stringify(componentsList));
-  }, [componentsList]);
 
   // Search and filter queries
   const [searchQuery, setSearchQuery] = useState('');
@@ -801,7 +717,25 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     return true;
   };
 
-  const handleAddCustomer = (e: React.FormEvent) => {
+  const syncProductToDb = async (comp: ComponentItem) => {
+    const payload = {
+      id: comp.id,
+      name: comp.name,
+      brand: comp.brand || 'G-LAB Premium',
+      category: comp.type, // maps to category
+      price: comp.priceFCFA, // maps to price
+      barcode: comp.sku, // maps to barcode
+      icon: comp.spec || 'Standard optique calibré' // maps to icon
+    };
+    try {
+      await saveProduct(payload);
+      loadData();
+    } catch (e) {
+      console.error("Failed to sync product to database:", e);
+    }
+  };
+
+  const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName) return;
 
@@ -817,40 +751,75 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
       }
     });
     const nextId = `OA-CL-${String(nextNum).padStart(3, '0')}`;
-
     const activeDestBranch = currentRole === 'BOUTIQUE_AB' ? 'Lyon Bellecour' : currentRole === 'BOUTIQUE_LM' ? 'Marseille Vieux-Port' : 'Paris Nation';
 
-    const newCust: Customer = {
+    const nameParts = newCustName.split(' ');
+    const firstName = nameParts[0] || 'Client';
+    const lastName = nameParts.slice(1).join(' ') || 'Nouveau';
+
+    const payload = {
       id: nextId,
-      name: newCustName,
-      phone: newCustPhone || '+221 77 111 22 33',
+      firstName,
+      lastName,
+      birthDate: '1990-01-01',
       email: newCustEmail || 'aucun-email@opticalize.com',
-      loyaltyTier: newCustTier,
-      lastVisit: new Date().toISOString().split('T')[0],
-      branch: activeDestBranch
+      phone: newCustPhone || '+221 77 111 22 33',
+      ssn: '',
+      registrationDate: new Date().toISOString().substring(0, 10),
+      loyaltyTier: newCustTier === 'REGULAR' ? 'STANDARD' : newCustTier || 'STANDARD',
+      loyaltyPoints: newCustTier === 'VIP' ? 1000 : 0,
+      branchId: activeDestBranch === 'Lyon Bellecour' ? 'store-ab' : activeDestBranch === 'Marseille Vieux-Port' ? 'store-lm' : 'store-dk',
+      prescriptionsJson: JSON.stringify([]),
+      purchasesJson: JSON.stringify([]),
+      paymentsJson: JSON.stringify([])
     };
-    setCustomersList([newCust, ...customersList]);
-    setNewCustName('');
-    setNewCustPhone('');
-    setNewCustEmail('');
-    setNewCustTier('REGULAR');
-    setShowAddModal(null);
+
+    try {
+      await saveCustomer(payload);
+      setNewCustName('');
+      setNewCustPhone('');
+      setNewCustEmail('');
+      setNewCustTier('REGULAR');
+      setShowAddModal(null);
+      loadData();
+    } catch (err) {
+      console.error("Failed to add customer:", err);
+      alert("Erreur de sauvegarde du patient dans PostgreSQL.");
+    }
   };
 
-  const handleTransferCustomerSubmit = (e: React.FormEvent) => {
+  const handleTransferCustomerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transferringCustomer) return;
-    const updated = customersList.map(c => {
-      if (c.id === transferringCustomer.id) {
-        return {
-          ...c,
-          branch: transferTargetBranch
-        };
-      }
-      return c;
-    });
-    setCustomersList(updated);
-    setTransferringCustomer(null);
+    
+    const nameParts = transferringCustomer.name.split(' ');
+    const firstName = nameParts[0] || 'Client';
+    const lastName = nameParts.slice(1).join(' ') || 'Nouveau';
+
+    const payload = {
+      id: transferringCustomer.id,
+      firstName,
+      lastName,
+      birthDate: '1990-01-01',
+      email: transferringCustomer.email || 'aucun-email@opticalize.com',
+      phone: transferringCustomer.phone,
+      ssn: transferringCustomer.ssn || '',
+      registrationDate: new Date().toISOString().substring(0, 10),
+      loyaltyTier: transferringCustomer.loyaltyTier === 'REGULAR' ? 'STANDARD' : transferringCustomer.loyaltyTier || 'STANDARD',
+      loyaltyPoints: 0,
+      branchId: transferTargetBranch === 'Lyon Bellecour' ? 'store-ab' : transferTargetBranch === 'Marseille Vieux-Port' ? 'store-lm' : 'store-dk',
+      prescriptionsJson: JSON.stringify([]),
+      purchasesJson: JSON.stringify([]),
+      paymentsJson: JSON.stringify([])
+    };
+
+    try {
+      await saveCustomer(payload);
+      setTransferringCustomer(null);
+      loadData();
+    } catch (err) {
+      console.error("Failed to transfer customer:", err);
+    }
   };
 
   const handleAddVoucher = (typeOverride?: 'ENTREE' | 'SORTIE' | 'COMMANDE' | 'DISTRIBUTION' | 'TRANSFERT' | 'RETOUR') => {
@@ -885,27 +854,35 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     setShowAddModal(null);
   };
 
-  const handleAddComponent = (e: React.FormEvent) => {
+  const handleAddComponent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!compName) return;
-    const newComp: ComponentItem = {
-      id: `CMP-${Math.floor(500 + Math.random() * 499)}`,
-      type: compType,
+    const newId = `CMP-${Math.floor(500 + Math.random() * 499)}`;
+    const newSku = compSku || `${compBrand.substring(0,3).toUpperCase()}-${Math.floor(100 + Math.random()*899)}`;
+    
+    const payload = {
+      id: newId,
       name: compName,
       brand: compBrand || 'G-LAB Premium',
-      sku: compSku || `${compBrand.substring(0,3).toUpperCase()}-${Math.floor(100 + Math.random()*899)}`,
-      stock: compStock >= 0 ? compStock : 10,
-      priceFCFA: compPrice > 0 ? compPrice : 45000,
-      spec: compSpec || 'Standard optique calibré'
+      category: compType, // maps to category
+      price: compPrice > 0 ? compPrice : 45000,
+      barcode: newSku, // maps to barcode
+      icon: compSpec || 'Standard optique calibré' // maps to icon
     };
-    setComponentsList([newComp, ...componentsList]);
-    setCompName('');
-    setCompBrand('');
-    setCompSku('');
-    setCompStock(10);
-    setCompPrice(0);
-    setCompSpec('');
-    setShowAddModal(null);
+
+    try {
+      await saveProduct(payload);
+      setCompName('');
+      setCompBrand('');
+      setCompSku('');
+      setCompStock(10);
+      setCompPrice(0);
+      setCompSpec('');
+      setShowAddModal(null);
+      loadData();
+    } catch (err) {
+      console.error("Failed to add component:", err);
+    }
   };
 
   const handleDeleteCustomer = (id: string) => {
@@ -921,11 +898,38 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     });
   };
 
-  const handleSaveEditCustomer = (e: React.FormEvent) => {
+  const handleSaveEditCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
-    setCustomersList(customersList.map(c => c.id === editingCustomer.id ? editingCustomer : c));
-    setEditingCustomer(null);
+    
+    const nameParts = editingCustomer.name.split(' ');
+    const firstName = nameParts[0] || 'Client';
+    const lastName = nameParts.slice(1).join(' ') || 'Nouveau';
+
+    const payload = {
+      id: editingCustomer.id,
+      firstName,
+      lastName,
+      birthDate: '1990-01-01',
+      email: editingCustomer.email || 'aucun-email@opticalize.com',
+      phone: editingCustomer.phone,
+      ssn: editingCustomer.ssn || '',
+      registrationDate: new Date().toISOString().substring(0, 10),
+      loyaltyTier: editingCustomer.loyaltyTier === 'REGULAR' ? 'STANDARD' : editingCustomer.loyaltyTier || 'STANDARD',
+      loyaltyPoints: 0,
+      branchId: editingCustomer.branch === 'Lyon Bellecour' ? 'store-ab' : editingCustomer.branch === 'Marseille Vieux-Port' ? 'store-lm' : 'store-dk',
+      prescriptionsJson: JSON.stringify([]),
+      purchasesJson: JSON.stringify([]),
+      paymentsJson: JSON.stringify([])
+    };
+
+    try {
+      await saveCustomer(payload);
+      setEditingCustomer(null);
+      loadData();
+    } catch (err) {
+      console.error("Failed to save customer edit:", err);
+    }
   };
 
   const handleDeleteVoucher = (id: string) => {
@@ -961,37 +965,45 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     });
   };
 
-  const executeDelete = () => {
+  const executeDelete = async () => {
     if (!deleteConfirmation) return;
     const { type, id } = deleteConfirmation;
-    if (type === 'customer') {
-      const updated = customersList.filter(c => c.id !== id);
-      setCustomersList(updated);
-      
-      const savedCrm = localStorage.getItem('optic_crm_customers');
-      if (savedCrm) {
-        try {
-          const parsed = JSON.parse(savedCrm);
-          if (Array.isArray(parsed)) {
-            const filteredCrm = parsed.filter((c: any) => c.id !== id);
-            localStorage.setItem('optic_crm_customers', JSON.stringify(filteredCrm));
-          }
-        } catch (e) {}
+    try {
+      if (type === 'customer') {
+        await deleteCustomer(id);
+      } else if (type === 'component') {
+        await deleteProduct(id);
+      } else if (type === 'voucher') {
+        setVouchersList(vouchersList.filter(v => v.id !== id));
       }
-      window.dispatchEvent(new Event('storage'));
-    } else if (type === 'voucher') {
-      setVouchersList(vouchersList.filter(v => v.id !== id));
-    } else if (type === 'component') {
-      setComponentsList(componentsList.filter(c => c.id !== id));
+      loadData();
+    } catch (err) {
+      console.error("Deletion failed:", err);
     }
     setDeleteConfirmation(null);
   };
 
-  const handleSaveEditComponent = (e: React.FormEvent) => {
+  const handleSaveEditComponent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingComponent) return;
-    setComponentsList(componentsList.map(c => c.id === editingComponent.id ? editingComponent : c));
-    setEditingComponent(null);
+
+    const payload = {
+      id: editingComponent.id,
+      name: editingComponent.name,
+      brand: editingComponent.brand || 'G-LAB Premium',
+      category: editingComponent.type,
+      price: editingComponent.priceFCFA,
+      barcode: editingComponent.sku,
+      icon: editingComponent.spec || 'Standard optique calibré'
+    };
+
+    try {
+      await saveProduct(payload);
+      setEditingComponent(null);
+      loadData();
+    } catch (err) {
+      console.error("Failed to save component edit:", err);
+    }
   };
 
   const handleUpdateVoucherStatus = (id: string, nextStatus: 'Brouillon' | 'En attente' | 'En Transit' | 'Validé' | 'Terminé') => {

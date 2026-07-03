@@ -123,6 +123,9 @@ model Customer {
   branchId         String?
   branch           Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   invoices         Invoice[]
+  prescriptionsJson String?   @default("[]")
+  purchasesJson     String?   @default("[]")
+  paymentsJson      String?   @default("[]")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -224,4 +227,62 @@ model AuditLog {
   timestamp DateTime @default(now())
 
   @@map("audit_logs")
+}
+
+model ClinicAppointment {
+  id          String   @id @default(uuid())
+  companyId   String   @default("TG")
+  patientName String
+  date        String
+  time        String
+  reason      String
+  optician    String
+  status      String   @default("En attente")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("clinic_appointments")
+}
+
+model SightExam {
+  id          String   @id @default(uuid())
+  companyId   String   @default("TG")
+  patientName String
+  date        String
+  odSphere    String
+  odCylinder  String
+  odAxis      String
+  odAddition  String
+  ogSphere    String
+  ogCylinder  String
+  ogAxis      String
+  ogAddition  String
+  pupilDist   String
+  notes       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("sight_exams")
+}
+
+model ClinicPrescription {
+  id                String   @id @default(uuid())
+  companyId         String   @default("TG")
+  patientName       String
+  date              String
+  odSphere          Float
+  odCylinder        Float
+  odAxis            Int
+  odAddition        Float
+  ogSphere          Float
+  ogCylinder        Float
+  ogAxis            Int
+  ogAddition        Float
+  pd                String
+  prescribedLenses  String   @default("")
+  notes             String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("clinic_prescriptions")
 }

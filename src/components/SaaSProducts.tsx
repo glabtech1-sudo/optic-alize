@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Package, Plus, Sparkles, Filter, Grid, List, AlertTriangle } from 'lucide-react';
-import { ComponentItem, INITIAL_COMPONENTS } from './GestionOpticModule';
+import { ComponentItem } from './GestionOpticModule';
+import { fetchProducts } from '../lib/api';
 
 interface SaaSProductsProps {
   darkMode?: boolean;
@@ -8,19 +9,18 @@ interface SaaSProductsProps {
 }
 
 export default function SaaSProducts({ darkMode = false, currentLanguage = 'FR' }: SaaSProductsProps) {
-  const [products, setProducts] = useState<ComponentItem[]>(() => {
-    const saved = localStorage.getItem('optic_components_list');
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-    return INITIAL_COMPONENTS;
-  });
+  const [products, setProducts] = useState<ComponentItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  React.useEffect(() => {
+    fetchProducts().then(data => {
+      setProducts(data);
+      setIsLoading(false);
+    }).catch(err => {
+      console.error("Failed to fetch products:", err);
+      setIsLoading(false);
+    });
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');

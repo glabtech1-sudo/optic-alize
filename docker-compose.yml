@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  # =========================================================
+  # 1. DATABASE SERVICE (PostgreSQL)
+  # =========================================================
+  db:
+    image: postgres:16-alpine
+    container_name: opticalize_db
+    restart: always
+    environment:
+      POSTGRES_DB: opticalize_prod
+      POSTGRES_USER: admin_optic
+      POSTGRES_PASSWORD: SecretOpticPassword2026!
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db_init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin_optic -d opticalize_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================
+  # 2. CACHE SERVICE (Redis)
+  # =========================================================
+  redis:
+    image: redis:7-alpine
+    container_name: opticalize_redis
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================
+  # 3. BACKEND & FRONTEND SERVER (App)
+  # =========================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opticalize_app
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://admin_optic:SecretOpticPassword2026!@db:5432/opticalize_prod?schema=public
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=OpticAlizeSuperSecureJWTSignKey2026!
+      - ENCRYPTION_SECRET=LRS_CryptoShieldOpticKey2026!
+    volumes:
+      - uploads_volume:/usr/src/app/uploads
+      - backups_volume:/usr/src/app/backups
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  # =========================================================
+  # 4. REVERSE PROXY & GATEWAY (Nginx)
+  # =========================================================
+  nginx:
+    image: nginx:alpine
+    container_name: opticalize_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - app
+
+  # =========================================================
+  # 5. DATABASE ADMINISTRATION PORTAL (PgAdmin)
+  # =========================================================
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: opticalize_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@opticalize.com
+      PGADMIN_DEFAULT_PASSWORD: PgAdminMasterPass2026!
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmindata:/var/lib/pgadmin
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  uploads_volume:
+    driver: local
+  backups_volume:
+    driver: local
+  pgadmindata:
+    driver: local

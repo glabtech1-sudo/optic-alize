@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { fetchCustomers, saveCustomer } from '../lib/api';
 // @ts-ignore
 import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
 import { 
@@ -109,38 +110,34 @@ interface CRMModuleProps {
 }
 
 export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
-  const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem('optic_crm_customers');
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-    return INITIAL_CUSTOMERS;
-  });
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(() => {
-    const saved = localStorage.getItem('optic_crm_customers');
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.length > 0 ? parsed[0] : null;
-      } catch (e) {}
-    }
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return null;
-    }
-    return INITIAL_CUSTOMERS && INITIAL_CUSTOMERS.length > 0 ? INITIAL_CUSTOMERS[0] : null;
-  });
+  const loadData = React.useCallback(() => {
+    fetchCustomers().then(data => {
+      setCustomers(data);
+      if (data.length > 0) {
+        setSelectedCustomer(prev => {
+          if (prev) {
+            const found = data.find(c => c.id === prev.id);
+            if (found) return found;
+          }
+          return data[0];
+        });
+      }
+      setIsLoading(false);
+    }).catch(err => {
+      console.error("Error fetching customers:", err);
+      setIsLoading(false);
+    });
+  }, []);
 
   React.useEffect(() => {
-    localStorage.setItem('optic_crm_customers', JSON.stringify(customers));
-    window.dispatchEvent(new Event('storage'));
-  }, [customers]);
+    loadData();
+    const interval = setInterval(loadData, 5000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'list' | 'detail'>('list');
   
@@ -619,12 +616,17 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
       return { ...c, purchases: updatedPurchases };
     });
 
-    setCustomers(updatedCustomers);
-    // Find updated patient object and adjust focus
-    const updatedPatient = updatedCustomers.find(c => c.id === customerId);
-    if (updatedPatient) setSelectedCustomer(updatedPatient);
-
-    triggerToast(`Garantie activée ! Remplacement de verre ou monture sous contrat ${policyNumber} validé avec succès IP-Lab.`, 'success');
+    const updatedCustomer = updatedCustomers.find(c => c.id === customerId);
+    if (updatedCustomer) {
+      saveCustomer(updatedCustomer).then(() => {
+        setCustomers(updatedCustomers);
+        setSelectedCustomer(updatedCustomer);
+        triggerToast(`Garantie activée ! Remplacement de verre ou monture sous contrat ${policyNumber} validé avec succès IP-Lab.`, 'success');
+      }).catch(err => {
+        console.error("Failed to save warranty claim:", err);
+        triggerToast("Erreur lors de l'enregistrement de la garantie", "info");
+      });
+    }
   };
 
   // Award loyalty points bonus conversion
@@ -634,38 +636,37 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
       return;
     }
 
-    // Deduct points
-    const updatedCustomers = customers.map(c => {
-      if (c.id !== patient.id) return c;
-      return { ...c, loyaltyPoints: c.loyaltyPoints - bonus.pointsNeeded };
+    const updatedCustomer = { ...patient, loyaltyPoints: patient.loyaltyPoints - bonus.pointsNeeded };
+    saveCustomer(updatedCustomer).then(() => {
+      const updatedCustomers = customers.map(c => c.id === patient.id ? updatedCustomer : c);
+      setCustomers(updatedCustomers);
+      setSelectedCustomer(updatedCustomer);
+      triggerToast(`Récompense "${bonus.rewardValue}" appliquée au dossier patient !`, 'success');
+    }).catch(err => {
+      console.error("Failed to deduct points reward:", err);
+      triggerToast("Erreur lors de la déduction des points", "info");
     });
-
-    setCustomers(updatedCustomers);
-    const updatedPatient = updatedCustomers.find(c => c.id === patient.id);
-    if (updatedPatient) setSelectedCustomer(updatedPatient);
-
-    triggerToast(`Récompense "${bonus.rewardValue}" appliquée au dossier patient !`, 'success');
   };
 
   // Add Points helper
   const handleAddPoints = (patient: Customer, pointsAmount: number) => {
-    const updatedCustomers = customers.map(c => {
-      if (c.id !== patient.id) return c;
-      const newPoints = c.loyaltyPoints + pointsAmount;
-      // Recalculates loyalty levels based on G-LAB brackets
-      let newTier = c.loyaltyTier;
-      if (newPoints >= 1000) newTier = 'VIP';
-      else if (newPoints >= 450) newTier = 'PLATINUM';
-      else if (newPoints >= 200) newTier = 'GOLD';
-      
-      return { ...c, loyaltyPoints: newPoints, loyaltyTier: newTier };
+    const newPoints = patient.loyaltyPoints + pointsAmount;
+    // Recalculates loyalty levels based on G-LAB brackets
+    let newTier = patient.loyaltyTier;
+    if (newPoints >= 1000) newTier = 'VIP';
+    else if (newPoints >= 450) newTier = 'PLATINUM';
+    else if (newPoints >= 200) newTier = 'GOLD';
+
+    const updatedCustomer = { ...patient, loyaltyPoints: newPoints, loyaltyTier: newTier };
+    saveCustomer(updatedCustomer).then(() => {
+      const updatedCustomers = customers.map(c => c.id === patient.id ? updatedCustomer : c);
+      setCustomers(updatedCustomers);
+      setSelectedCustomer(updatedCustomer);
+      triggerToast(`${pointsAmount} points de fidélité crédités ! Niveau calculé : ${updatedCustomer.loyaltyTier}`);
+    }).catch(err => {
+      console.error("Failed to add points:", err);
+      triggerToast("Erreur lors de l'attribution des points", "info");
     });
-
-    setCustomers(updatedCustomers);
-    const updatedPatient = updatedCustomers.find(c => c.id === patient.id);
-    if (updatedPatient) setSelectedCustomer(updatedPatient);
-
-    triggerToast(`${pointsAmount} points de fidélité crédités ! Niveau calculé : ${updatedPatient?.loyaltyTier || patient.loyaltyTier}`);
   };
 
   // Register a new customer
@@ -732,22 +733,27 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
       payments: []
     };
 
-    const nextCustomers = [...customers, brandNewCust];
-    setCustomers(nextCustomers);
-    setSelectedCustomer(brandNewCust);
-    setIsRegisteringOpen(false);
-    setActiveSubTab('detail');
-    
-    // Reset form fields
-    setNewFirstName('');
-    setNewLastName('');
-    setNewEmail('');
-    setNewPhone('');
-    setNewBirthDate('');
-    setNewSsn('');
-    setNewLoyaltyTier('STANDARD');
+    saveCustomer(brandNewCust).then(() => {
+      const nextCustomers = [...customers, brandNewCust];
+      setCustomers(nextCustomers);
+      setSelectedCustomer(brandNewCust);
+      setIsRegisteringOpen(false);
+      setActiveSubTab('detail');
+      
+      // Reset form fields
+      setNewFirstName('');
+      setNewLastName('');
+      setNewEmail('');
+      setNewPhone('');
+      setNewBirthDate('');
+      setNewSsn('');
+      setNewLoyaltyTier('STANDARD');
 
-    triggerToast(`Dossier patient #${brandNewCust.id} initialisé et affecté au magasin ${newBranch}.`, 'success');
+      triggerToast(`Dossier patient #${brandNewCust.id} initialisé et affecté au magasin ${newBranch}.`, 'success');
+    }).catch(err => {
+      console.error("Failed to register customer:", err);
+      triggerToast("Erreur lors de la création du client", "info");
+    });
   };
 
   return (

@@ -319,7 +319,8 @@ export default function App() {
                        currentUserEmail === 'glabtech1@opticalize.com' || 
                        currentUserEmail === 'anges.gildas@gmail.com' || 
                        currentUserEmail === 'anges.gildas@opticalizé.com' ||
-                       currentUserEmail === 'anges.gildas@opticalize.com';
+                       currentUserEmail === 'anges.gildas@opticalize.com' ||
+                       (users.find(u => u?.email === currentUserEmail)?.role === 'Super Admin');
 
   // Get dynamic allowed modules based on current company context & active user (Affectation dynamique & sélection de modules)
   const isModuleEnabledForCompany = (moduleId: string, companyId: string) => {

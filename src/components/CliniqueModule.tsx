@@ -6,6 +6,12 @@ import {
   Sparkles, HelpCircle, UserCheck, ShieldCheck,
   Pencil, Download, Trash2, Printer, Search, X
 } from 'lucide-react';
+import { 
+  fetchAppointments, saveAppointment, deleteAppointment,
+  fetchSightExams, saveSightExam, deleteSightExam,
+  fetchClinicPrescriptions, saveClinicPrescription, deleteClinicPrescription,
+  fetchCustomers, saveCustomer
+} from '../lib/api';
 
 interface CliniqueModuleProps {
   currentLanguage: 'FR' | 'EN';
@@ -67,37 +73,40 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
     e.preventDefault();
     if (!selectedPrescriptionForEdit) return;
 
-    const updated = myPrescriptions.map(p => {
-      if (p.id === selectedPrescriptionForEdit.id) {
-        return {
-          ...p,
-          patientName: editPtName,
-          od: {
-            sphere: parseFloat(editOdSph) || 0,
-            cylinder: parseFloat(editOdCyl) || 0,
-            axis: parseInt(editOdAxe) || 0,
-            addition: parseFloat(editOdAdd) || 0
-          },
-          og: {
-            sphere: parseFloat(editOgSph) || 0,
-            cylinder: parseFloat(editOgCyl) || 0,
-            axis: parseInt(editOgAxe) || 0,
-            addition: parseFloat(editOgAdd) || 0
-          },
-          pd: editPd,
-          notes: editNotes
-        };
-      }
-      return p;
-    });
+    const target = {
+      id: selectedPrescriptionForEdit.id,
+      patientName: editPtName,
+      date: selectedPrescriptionForEdit.date,
+      odSphere: parseFloat(editOdSph) || 0,
+      odCylinder: parseFloat(editOdCyl) || 0,
+      odAxis: parseInt(editOdAxe) || 0,
+      odAddition: parseFloat(editOdAdd) || 0,
+      ogSphere: parseFloat(editOgSph) || 0,
+      ogCylinder: parseFloat(editOgCyl) || 0,
+      ogAxis: parseInt(editOgAxe) || 0,
+      ogAddition: parseFloat(editOgAdd) || 0,
+      pd: editPd,
+      prescribedLenses: selectedPrescriptionForEdit.prescribedLenses || '',
+      notes: editNotes
+    };
 
-    setMyPrescriptions(updated);
-    setSelectedPrescriptionForEdit(null);
+    saveClinicPrescription(target).then(() => {
+      loadData();
+      setSelectedPrescriptionForEdit(null);
+    }).catch(err => {
+      console.error(err);
+      alert("Erreur lors de la mise à jour de la prescription.");
+    });
   };
 
   const handleDeletePrescription = (id: string, name: string) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer définitivement la prescription de ${name} (${id}) ?`)) {
-      setMyPrescriptions(myPrescriptions.filter(p => p.id !== id));
+      deleteClinicPrescription(id).then(() => {
+        loadData();
+      }).catch(err => {
+        console.error(err);
+        alert("Erreur lors de la suppression de la prescription.");
+      });
     }
   };
 
@@ -374,33 +383,71 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
   };
 
   // Load dynamically synchronized CRM patients list
-  const dynamicCrmPatients = React.useMemo(() => {
-    const saved = localStorage.getItem('optic_crm_customers');
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return RECENT_CLIENTS.map(r => ({ id: r.id, firstName: r.name.split(' ')[0], lastName: r.name.split(' ').slice(1).join(' ') }));
-  }, [activeSubTab]);
+  const [dynamicCrmPatients, setDynamicCrmPatients] = useState<any[]>([]);
+  const [myPrescriptions, setMyPrescriptions] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
 
-  // Load "My prescriptions" state
-  const [myPrescriptions, setMyPrescriptions] = useState<any[]>(() => {
-    const saved = localStorage.getItem('optic_my_prescriptions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return [];
-  });
+  const loadData = React.useCallback(() => {
+    fetchCustomers().then(data => {
+      setDynamicCrmPatients(data);
+    }).catch(err => console.error(err));
 
-  // Watch for changes to save to localStorage
+    fetchClinicPrescriptions().then(data => {
+      setMyPrescriptions(data.map((p: any) => ({
+        id: p.id,
+        patientName: p.patientName,
+        date: p.date,
+        od: {
+          sphere: p.odSphere,
+          cylinder: p.odCylinder,
+          axis: p.odAxis,
+          addition: p.odAddition
+        },
+        og: {
+          sphere: p.ogSphere,
+          cylinder: p.ogCylinder,
+          axis: p.ogAxis,
+          addition: p.ogAddition
+        },
+        pd: p.pd,
+        prescribedLenses: p.prescribedLenses,
+        notes: p.notes
+      })));
+    }).catch(err => console.error(err));
+
+    fetchAppointments().then(data => {
+      setAppointments(data);
+    }).catch(err => console.error(err));
+
+    fetchSightExams().then(data => {
+      setExams(data.map((ex: any) => ({
+        id: ex.id,
+        patientName: ex.patientName,
+        date: ex.date,
+        od: {
+          sphere: parseFloat(ex.odSphere) || 0,
+          cylinder: parseFloat(ex.odCylinder) || 0,
+          axis: parseInt(ex.odAxis) || 90,
+          addition: parseFloat(ex.odAddition) || 2.0
+        },
+        og: {
+          sphere: parseFloat(ex.ogSphere) || 0,
+          cylinder: parseFloat(ex.ogCylinder) || 0,
+          axis: parseInt(ex.ogAxis) || 90,
+          addition: parseFloat(ex.ogAddition) || 2.0
+        },
+        pd: ex.pupilDist,
+        notes: ex.notes
+      })));
+    }).catch(err => console.error(err));
+  }, []);
+
   React.useEffect(() => {
-    localStorage.setItem('optic_my_prescriptions', JSON.stringify(myPrescriptions));
-  }, [myPrescriptions]);
+    loadData();
+    const interval = setInterval(loadData, 5000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   const handleExportPrescriptionsToExcel = () => {
     const headers = [
@@ -442,44 +489,12 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
 
   const [presSearchQuery, setPresSearchQuery] = useState('');
 
-  // Appointments data list
-  const [appointments, setAppointments] = useState<any[]>(() => {
-    const saved = localStorage.getItem('optic_my_clinic_appointments');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  React.useEffect(() => {
-    localStorage.setItem('optic_my_clinic_appointments', JSON.stringify(appointments));
-  }, [appointments]);
-
   // Appointment Form States
   const [newPtName, setNewPtName] = useState('');
   const [newDate, setNewDate] = useState('2026-06-11');
   const [newTime, setNewTime] = useState('11:00');
   const [newReason, setNewReason] = useState('Examen de la vue');
   const [newOptician, setNewOptician] = useState('Antoine G.');
-
-  // Sight Exams & Prescription states
-  const [exams, setExams] = useState<any[]>(() => {
-    const saved = localStorage.getItem('optic_my_clinic_exams');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  React.useEffect(() => {
-    localStorage.setItem('optic_my_clinic_exams', JSON.stringify(exams));
-  }, [exams]);
 
   // Compute distinct custom patients list received in clinic and prescriptions
   const receivedPatients = React.useMemo(() => {
@@ -554,19 +569,25 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
       date: newDate,
       time: newTime,
       reason: newReason,
-      opticianId: newOptician,
+      optician: newOptician,
       status: 'Planifié'
     };
-    setAppointments([newAppt, ...appointments]);
-    setNewPtName('');
-    
-    if (isOffline) {
-      alert("Mode Hors-Ligne: Rendez-vous enregistré localement dans la file d'attente d'IndexedDB.");
-    }
+    saveAppointment(newAppt).then(() => {
+      loadData();
+      setNewPtName('');
+    }).catch(err => {
+      console.error(err);
+      alert("Erreur lors de l'enregistrement du rendez-vous.");
+    });
   };
 
   const updateApptStatus = (id: string, newStatus: string) => {
-    setAppointments(appointments.map(a => a.id === id ? { ...a, status: newStatus } : a));
+    const found = appointments.find(a => a.id === id);
+    if (!found) return;
+    const updated = { ...found, status: newStatus };
+    saveAppointment(updated).then(() => {
+      loadData();
+    }).catch(err => console.error(err));
   };
 
   // Exam and diagnostic prescription creation handler
@@ -577,77 +598,94 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
       alert("Erreur: Veuillez saisir le nom du médecin ou du docteur dans le champ 'Rédigé par' avant d'enregistrer.");
       return;
     }
+    const examId = `EXAM-${Math.floor(300 + Math.random() * 700)}`;
+    const presId = `PRES-${Math.floor(1000 + Math.random() * 9000)}`;
+    const dateStr = new Date().toISOString().split('T')[0];
+
     const newExam = {
-      id: `EXAM-${Math.floor(300 + Math.random() * 700)}`,
+      id: examId,
       patientName: examPatient,
-      date: new Date().toISOString().split('T')[0],
-      od: { sphere: parseFloat(odSphere), cylinder: parseFloat(odCylinder), axis: parseInt(odAxis), addition: parseFloat(odAddition) },
-      og: { sphere: parseFloat(ogSphere), cylinder: parseFloat(ogCylinder), axis: parseInt(ogAxis), addition: parseFloat(ogAddition) },
-      pd: pupilDist,
-      notes: examNotes,
-      writtenBy: redigePar
+      date: dateStr,
+      odSphere: odSphere,
+      odCylinder: odCylinder,
+      odAxis: odAxis,
+      odAddition: odAddition,
+      ogSphere: ogSphere,
+      ogCylinder: ogCylinder,
+      ogAxis: ogAxis,
+      ogAddition: ogAddition,
+      pupilDist: pupilDist,
+      notes: examNotes
     };
-    
-    // 1. Add to main exams view list
-    const updatedExams = [newExam, ...exams];
-    setExams(updatedExams);
 
-    // 2. Add to "Mes Prescriptions" list for history tracking
-    const updatedPrescriptions = [newExam, ...myPrescriptions];
-    setMyPrescriptions(updatedPrescriptions);
+    const newPres = {
+      id: presId,
+      patientName: examPatient,
+      date: dateStr,
+      odSphere: parseFloat(odSphere),
+      odCylinder: parseFloat(odCylinder),
+      odAxis: parseInt(odAxis),
+      odAddition: parseFloat(odAddition),
+      ogSphere: parseFloat(ogSphere),
+      ogCylinder: parseFloat(ogCylinder),
+      ogAxis: parseInt(ogAxis),
+      ogAddition: parseFloat(ogAddition),
+      pd: pupilDist,
+      prescribedLenses: 'Verres ophtalmiques unifocaux durcis et antireflet.',
+      notes: examNotes
+    };
 
-    // 3. Update Patient Clinique record in CRM database (optic_crm_customers)
-    try {
-      const crmSaved = localStorage.getItem('optic_crm_customers');
-      if (crmSaved) {
-        const crmCustomers = JSON.parse(crmSaved);
-        if (Array.isArray(crmCustomers) && crmCustomers.length > 0) {
-          const updatedCrmCustomers = crmCustomers.map((c: any) => {
-            const customerFullName = `${c.firstName} ${c.lastName}`.trim().toLowerCase();
-            const targetName = examPatient.trim().toLowerCase();
-            
-            // Match custom customer
-            if (customerFullName === targetName || customerFullName.includes(targetName) || targetName.includes(customerFullName)) {
-              // Create prescription document
-              const newCrmPres: any = {
-                id: `PRES-${Math.floor(1000 + Math.random() * 9000)}`,
-                ophthalmologist: redigePar,
-                odSphere: parseFloat(odSphere),
-                odCylinder: parseFloat(odCylinder),
-                odAxis: parseInt(odAxis),
-                odAddition: parseFloat(odAddition),
-                ogSphere: parseFloat(ogSphere),
-                ogCylinder: parseFloat(ogCylinder),
-                ogAxis: parseInt(ogAxis),
-                ogAddition: parseFloat(ogAddition),
-                prescriptionDate: new Date().toISOString().split('T')[0],
-                isExpired: false,
-                insuranceValidated: true
-              };
-              
-              return {
-                ...c,
-                prescriptions: [newCrmPres, ...(c.prescriptions || [])]
-              };
-            }
-            return c;
-          });
-          
-          localStorage.setItem('optic_crm_customers', JSON.stringify(updatedCrmCustomers));
-        }
+    const p1 = saveSightExam(newExam);
+    const p2 = saveClinicPrescription(newPres);
+
+    let p3 = Promise.resolve();
+    const match = dynamicCrmPatients.find(c => {
+      const customerFullName = `${c.firstName} ${c.lastName}`.trim().toLowerCase();
+      const targetName = examPatient.trim().toLowerCase();
+      return customerFullName === targetName || customerFullName.includes(targetName) || targetName.includes(customerFullName);
+    });
+
+    if (match) {
+      let prescriptions: any[] = [];
+      try {
+        prescriptions = JSON.parse(match.prescriptionsJson || '[]');
+      } catch (e) {
+        prescriptions = [];
       }
-    } catch (err) {
-      console.error("Error updating patient clinic record:", err);
+      const newCrmPres = {
+        id: `PRES-${Math.floor(1000 + Math.random() * 9000)}`,
+        ophthalmologist: redigePar,
+        odSphere: parseFloat(odSphere),
+        odCylinder: parseFloat(odCylinder),
+        odAxis: parseInt(odAxis),
+        odAddition: parseFloat(odAddition),
+        ogSphere: parseFloat(ogSphere),
+        ogCylinder: parseFloat(ogCylinder),
+        ogAxis: parseInt(ogAxis),
+        ogAddition: parseFloat(ogAddition),
+        prescriptionDate: dateStr,
+        isExpired: false,
+        insuranceValidated: true
+      };
+      const updatedCustomer = {
+        ...match,
+        prescriptionsJson: JSON.stringify([newCrmPres, ...prescriptions])
+      };
+      p3 = saveCustomer(updatedCustomer);
     }
 
-    setExamPatient('');
-    setRedigePar('');
-    
-    // Nice feedback message
-    setSuccessBanner(`Ordonnance de ${newExam.patientName} enregistrée et délivrée avec succès !`);
-    setTimeout(() => {
-      setSuccessBanner(null);
-    }, 6000);
+    Promise.all([p1, p2, p3]).then(() => {
+      loadData();
+      setExamPatient('');
+      setRedigePar('');
+      setSuccessBanner(`Ordonnance de ${examPatient} enregistrée et délivrée avec succès !`);
+      setTimeout(() => {
+        setSuccessBanner(null);
+      }, 6000);
+    }).catch(err => {
+      console.error(err);
+      alert("Erreur lors de la sauvegarde de l'examen clinique.");
+    });
   };
 
   return (

@@ -7,7 +7,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: 'Admin' | 'Billing Manager' | 'Editor' | 'Viewer' | 'Gérant' | 'Caissier' | 'Opticien' | 'Magasinier' | 'Comptable' | 'Secrétaire';
+  role: 'Admin' | 'Super Admin' | 'Directeur' | 'Manager' | 'Billing Manager' | 'Editor' | 'Viewer' | 'Gérant' | 'Caissier' | 'Opticien' | 'Magasinier' | 'Comptable' | 'Secrétaire';
   status: 'Active' | 'Suspended' | 'Pending MFA' | 'Invited';
   phone: string;
   location: string;
@@ -255,8 +255,17 @@ export default function SaaSUsers({
   const [rbacMatrix, setRbacMatrix] = useState<{
     [role: string]: { [permission: string]: boolean }
   }>({
+    'Super Admin': {
+      'dashboard': true, 'fidelisation': true, 'fidelisation_sav': true, 'clinique': true, 'products': true, 'commande': true, 'orders': true, 'journal': true, 'websockets': true, 'revenue': true, 'reports': true, 'hr': true, 'presence': true, 'gestion_optic': true, 'super_admin_monitor': true, 'settings': true
+    },
     'Admin': {
       'dashboard': true, 'fidelisation': true, 'fidelisation_sav': true, 'clinique': true, 'products': true, 'commande': true, 'orders': true, 'journal': true, 'websockets': true, 'revenue': true, 'reports': true, 'hr': true, 'presence': true, 'gestion_optic': true, 'super_admin_monitor': true, 'settings': true
+    },
+    'Directeur': {
+      'dashboard': true, 'fidelisation': true, 'fidelisation_sav': true, 'clinique': true, 'products': true, 'commande': true, 'orders': true, 'journal': true, 'websockets': true, 'revenue': true, 'reports': true, 'hr': true, 'presence': true, 'gestion_optic': true, 'super_admin_monitor': false, 'settings': true
+    },
+    'Manager': {
+      'dashboard': true, 'fidelisation': true, 'fidelisation_sav': true, 'clinique': true, 'products': true, 'commande': true, 'orders': true, 'journal': true, 'websockets': true, 'revenue': false, 'reports': true, 'hr': false, 'presence': true, 'gestion_optic': true, 'super_admin_monitor': false, 'settings': false
     },
     'Gérant': {
       'dashboard': true, 'fidelisation': true, 'fidelisation_sav': true, 'clinique': true, 'products': true, 'commande': true, 'orders': true, 'journal': true, 'websockets': true, 'revenue': true, 'reports': true, 'hr': true, 'presence': true, 'gestion_optic': true, 'super_admin_monitor': false, 'settings': true
@@ -541,6 +550,9 @@ export default function SaaSUsers({
               className={`text-xs font-bold px-3 py-2.5 rounded-xl border border-slate-150/80 bg-white focus:outline-none cursor-pointer text-slate-700 shadow-2xs hover:bg-slate-50 transition-all ${darkMode ? 'border-slate-800 bg-slate-900 text-slate-200' : ''}`}
             >
               <option value="All">{currentLanguage === 'FR' ? "Tous les rôles" : "All Roles"}</option>
+              <option value="Super Admin">{currentLanguage === 'FR' ? "Super Admin" : "Super Admin"}</option>
+              <option value="Directeur">{currentLanguage === 'FR' ? "Directeur" : "Director"}</option>
+              <option value="Manager">{currentLanguage === 'FR' ? "Manager" : "Manager"}</option>
               <option value="Admin">{currentLanguage === 'FR' ? "Administrateur" : "Administrator"}</option>
               <option value="Billing Manager">{currentLanguage === 'FR' ? "Finance / Facturation" : "Billing / Finance"}</option>
               <option value="Editor">{currentLanguage === 'FR' ? "Opticien / Éditeur" : "Optician / Editor"}</option>
@@ -912,7 +924,10 @@ export default function SaaSUsers({
             </span>
             <div className="flex lg:flex-col gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none max-h-[520px] pr-1">
               {[
+                { key: 'Super Admin', label: currentLanguage === 'FR' ? 'Super Admin' : 'Super Admin', desc: currentLanguage === 'FR' ? 'Administration souveraine de la plateforme' : 'Sovereign system administrative control', color: 'text-red-700 bg-red-50 border-red-100/40' },
                 { key: 'Admin', label: currentLanguage === 'FR' ? 'Administrateur' : 'Administrator', desc: currentLanguage === 'FR' ? 'Accès illimité d\'audit et configuration' : 'Unlimited developer options & systems', color: 'text-rose-700 bg-rose-50 border-rose-100/40' },
+                { key: 'Directeur', label: currentLanguage === 'FR' ? 'Directeur' : 'Director', desc: currentLanguage === 'FR' ? 'Direction de l\'entreprise et des agences' : 'Full company and branch management', color: 'text-emerald-700 bg-emerald-50 border-emerald-100/40' },
+                { key: 'Manager', label: currentLanguage === 'FR' ? 'Manager de Boutique' : 'Manager', desc: currentLanguage === 'FR' ? 'Supervision d\'agence et pilotage d\'équipe' : 'Branch operations and team pilot', color: 'text-teal-700 bg-teal-50 border-teal-100/40' },
                 { key: 'Gérant', label: currentLanguage === 'FR' ? 'Gérant de Boutique' : 'Store Manager', desc: currentLanguage === 'FR' ? 'Contrôle logistique et clôtures d\'agence' : 'Full branch cash books & inventory', color: 'text-indigo-700 bg-indigo-50 border-indigo-100/40' },
                 { key: 'Billing Manager', label: currentLanguage === 'FR' ? 'Responsable Finance' : 'Finance Manager', desc: currentLanguage === 'FR' ? 'Contrôle Tiers-payant, recettes et mutuelles' : 'Auditing health bills & credit receipts', color: 'text-sky-700 bg-sky-50 border-sky-100/40' },
                 { key: 'Editor', label: currentLanguage === 'FR' ? 'Opticien Rédacteur' : 'Editor Optician', desc: currentLanguage === 'FR' ? 'Édition des fiches et des catalogues' : 'Full CRM & visual inventory editing', color: 'text-blue-700 bg-blue-50 border-blue-100/40' },
@@ -1246,6 +1261,12 @@ export default function SaaSUsers({
                         setNewUserModules(['dashboard', 'revenue', 'journal', 'products']);
                       } else if (selectedRole === 'Secrétaire') {
                         setNewUserModules(['dashboard', 'fidelisation', 'settings']);
+                      } else if (selectedRole === 'Super Admin') {
+                        setNewUserModules(['dashboard', 'fidelisation', 'fidelisation_sav', 'clinique', 'products', 'commande', 'orders', 'journal', 'websockets', 'revenue', 'reports', 'hr', 'presence', 'gestion_optic', 'settings', 'super_admin_hq', 'super_admin_monitor']);
+                      } else if (selectedRole === 'Directeur') {
+                        setNewUserModules(['dashboard', 'fidelisation', 'fidelisation_sav', 'clinique', 'products', 'commande', 'orders', 'journal', 'websockets', 'revenue', 'reports', 'hr', 'presence', 'gestion_optic', 'settings']);
+                      } else if (selectedRole === 'Manager') {
+                        setNewUserModules(['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'journal', 'gestion_optic', 'clinique']);
                       } else if (selectedRole === 'Admin') {
                         setNewUserModules(['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'settings']);
                       } else if (selectedRole === 'Billing Manager') {
@@ -1257,13 +1278,16 @@ export default function SaaSUsers({
                       }
                     }}
                   >
-                    <option value="Gérant">{currentLanguage === 'FR' ? "Gérant (Directeur)" : "Manager (Gérant)"}</option>
+                    <option value="Super Admin">{currentLanguage === 'FR' ? "Super Admin" : "Super Admin"}</option>
+                    <option value="Directeur">{currentLanguage === 'FR' ? "Directeur" : "Director (Directeur)"}</option>
+                    <option value="Manager">{currentLanguage === 'FR' ? "Manager" : "Manager"}</option>
+                    <option value="Gérant">{currentLanguage === 'FR' ? "Gérant de Boutique" : "Store Manager"}</option>
                     <option value="Caissier">{currentLanguage === 'FR' ? "Caissier" : "Cashier (Caissier)"}</option>
                     <option value="Opticien">{currentLanguage === 'FR' ? "Opticien-Conseil" : "Optician (Opticien)"}</option>
                     <option value="Magasinier">{currentLanguage === 'FR' ? "Magasinier / Gestionnaire de Stock" : "Stock-keeper (Magasinier)"}</option>
                     <option value="Comptable">{currentLanguage === 'FR' ? "Comptable financier" : "Accountant (Comptable)"}</option>
                     <option value="Secrétaire">{currentLanguage === 'FR' ? "Secretaire / Accueil" : "Secretary (Secrétaire)"}</option>
-                    <option value="Admin">{currentLanguage === 'FR' ? "Directeur Administrateur" : "Manager (Admin)"}</option>
+                    <option value="Admin">{currentLanguage === 'FR' ? "Administrateur" : "Administrator (Admin)"}</option>
                     <option value="Billing Manager">{currentLanguage === 'FR' ? "Comptable Financier Global" : "Finance (Billing)"}</option>
                     <option value="Editor">{currentLanguage === 'FR' ? "Éditeur / Rédacteur" : "Editor"}</option>
                     <option value="Viewer">{currentLanguage === 'FR' ? "Lecteur Seul" : "Consultant (Viewer)"}</option>
@@ -1496,6 +1520,12 @@ export default function SaaSUsers({
                         updatedModules = ['dashboard', 'revenue', 'journal', 'products'];
                       } else if (selectedRole === 'Secrétaire') {
                         updatedModules = ['dashboard', 'fidelisation', 'settings'];
+                      } else if (selectedRole === 'Super Admin') {
+                        updatedModules = ['dashboard', 'fidelisation', 'fidelisation_sav', 'clinique', 'products', 'commande', 'orders', 'journal', 'websockets', 'revenue', 'reports', 'hr', 'presence', 'gestion_optic', 'settings', 'super_admin_hq', 'super_admin_monitor'];
+                      } else if (selectedRole === 'Directeur') {
+                        updatedModules = ['dashboard', 'fidelisation', 'fidelisation_sav', 'clinique', 'products', 'commande', 'orders', 'journal', 'websockets', 'revenue', 'reports', 'hr', 'presence', 'gestion_optic', 'settings'];
+                      } else if (selectedRole === 'Manager') {
+                        updatedModules = ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'journal', 'gestion_optic', 'clinique'];
                       } else if (selectedRole === 'Admin') {
                         updatedModules = ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'settings'];
                       } else if (selectedRole === 'Billing Manager') {
@@ -1509,13 +1539,16 @@ export default function SaaSUsers({
                       setEditingUser({ ...editingUser, role: selectedRole, allowedModules: updatedModules });
                     }}
                   >
-                    <option value="Gérant">{currentLanguage === 'FR' ? "Gérant (Directeur)" : "Manager (Gérant)"}</option>
+                    <option value="Super Admin">{currentLanguage === 'FR' ? "Super Admin" : "Super Admin"}</option>
+                    <option value="Directeur">{currentLanguage === 'FR' ? "Directeur" : "Director (Directeur)"}</option>
+                    <option value="Manager">{currentLanguage === 'FR' ? "Manager" : "Manager"}</option>
+                    <option value="Gérant">{currentLanguage === 'FR' ? "Gérant de Boutique" : "Store Manager"}</option>
                     <option value="Caissier">{currentLanguage === 'FR' ? "Caissier" : "Cashier (Caissier)"}</option>
                     <option value="Opticien">{currentLanguage === 'FR' ? "Opticien-Conseil" : "Optician (Opticien)"}</option>
                     <option value="Magasinier">{currentLanguage === 'FR' ? "Magasinier / Gestionnaire de Stock" : "Stock-keeper (Magasinier)"}</option>
                     <option value="Comptable">{currentLanguage === 'FR' ? "Comptable financier" : "Accountant (Comptable)"}</option>
                     <option value="Secrétaire">{currentLanguage === 'FR' ? "Secretaire / Accueil" : "Secretary (Secrétaire)"}</option>
-                    <option value="Admin">{currentLanguage === 'FR' ? "Directeur Administrateur" : "Manager (Admin)"}</option>
+                    <option value="Admin">{currentLanguage === 'FR' ? "Administrateur" : "Administrator (Admin)"}</option>
                     <option value="Billing Manager">{currentLanguage === 'FR' ? "Comptable Financier Global" : "Finance (Billing)"}</option>
                     <option value="Editor">{currentLanguage === 'FR' ? "Éditeur / Rédacteur" : "Editor"}</option>
                     <option value="Viewer">{currentLanguage === 'FR' ? "Lecteur Seul" : "Consultant (Viewer)"}</option>
