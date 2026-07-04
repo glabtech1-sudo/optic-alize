@@ -1282,6 +1282,17 @@ export default function HRModule({
       triggerAlert("Veuillez remplir tous les champs obligatoires (notamment le poste, l'affectation et le code PIN).");
       return;
     }
+    const emailLower = editEmpEmail.toLowerCase().trim();
+    if (
+      emailLower === 'glabtech1@opticalize.com' || 
+      emailLower === 'anges.gildas@opticalize.com' || 
+      emailLower === 'anges.gildas@opticalizé.com' ||
+      emailLower.includes('glabtech1@') || 
+      emailLower.includes('anges.gildas@')
+    ) {
+      triggerAlert("Modification refusée : vous ne pouvez plus attribuer les adresses administratives 'glabtech1' ou 'anges.gildas' à un collaborateur. Veuillez utiliser une adresse email professionnelle distincte.");
+      return;
+    }
     if (editEmpPinCode.length !== 4) {
       triggerAlert("Le code PIN de sécurité doit comporter exactement 4 chiffres.");
       return;
@@ -1383,7 +1394,7 @@ export default function HRModule({
 
   // --- COMPUTES & CHARTS DATA ---
   const aggregatedPayrollCost = useMemo(() => {
-    return payslips.reduce((sum, p) => sum + p.netSalary, 0);
+    return payslips.filter(p => p.paymentStatus === 'Payé').reduce((sum, p) => sum + p.netSalary, 0);
   }, [payslips]);
 
   const departmentStaffDistribution = useMemo(() => {
@@ -1423,6 +1434,17 @@ export default function HRModule({
     e.preventDefault();
     if (!newEmpFirst || !newEmpLast || !newEmpEmail || !newEmpPhone || !newEmpSalary || !newEmpBoutique || !newEmpPosition || !newEmpPinCode) {
       triggerAlert("Veuillez remplir tous les champs obligatoires (notamment le poste, la boutique d'affectation et le code PIN de l'employé).");
+      return;
+    }
+    const emailLower = newEmpEmail.toLowerCase().trim();
+    if (
+      emailLower === 'glabtech1@opticalize.com' || 
+      emailLower === 'anges.gildas@opticalize.com' || 
+      emailLower === 'anges.gildas@opticalizé.com' ||
+      emailLower.includes('glabtech1@') || 
+      emailLower.includes('anges.gildas@')
+    ) {
+      triggerAlert("Création refusée : vous ne pouvez plus créer de collaborateur avec les adresses administratives 'glabtech1' ou 'anges.gildas'. Veuillez utiliser une adresse email professionnelle distincte.");
       return;
     }
     if (newEmpPinCode.length !== 4) {

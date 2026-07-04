@@ -3,6 +3,17 @@ import {createRoot} from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
 import './index.css';
+import { initializeAutomaticSupabaseSync, pullAllCollectionsFromSupabase } from './lib/supabaseSync.ts';
+
+// Initialize Supabase automatic synchronization and pull existing cloud data
+initializeAutomaticSupabaseSync();
+pullAllCollectionsFromSupabase().then(success => {
+  if (success) {
+    console.log('[SUPABASE] Initial database state successfully loaded on boot.');
+  }
+}).catch(err => {
+  console.warn('[SUPABASE] Error pulling database state on boot:', err);
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {

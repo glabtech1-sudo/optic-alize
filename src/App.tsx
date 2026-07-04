@@ -254,42 +254,7 @@ export default function App() {
   }, [users]);
 
   // Preseeded employee default roster for seamless mock operations & synchronized biometrics
-  const SEED_EMPLOYEES = [
-    {
-      id: 'EMP-01',
-      firstName: 'Glabtech1',
-      lastName: 'Admin',
-      email: 'glabtech1@opticalize.com',
-      phone: '+221 77 124 55 93',
-      position: 'Directeur Général',
-      department: 'Direction',
-      basicSalary: 5000.0,
-      status: 'Actif',
-      hireDate: '2024-01-01',
-      contractType: 'CDI',
-      boutique: 'Agence Alpha',
-      birthDate: '1985-01-01',
-      pinCode: '0074',
-      photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200'
-    },
-    {
-      id: 'EMP-02',
-      firstName: 'Gildas',
-      lastName: 'Concepteur',
-      email: 'anges.gildas@opticalize.com',
-      phone: '+221 77 124 55 93',
-      position: 'Directeur Technique',
-      department: 'Technique',
-      basicSalary: 5000.0,
-      status: 'Actif',
-      hireDate: '2024-01-01',
-      contractType: 'CDI',
-      boutique: 'Agence Alpha',
-      birthDate: '1985-01-01',
-      pinCode: '0074',
-      photo: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=200'
-    }
-  ];
+  const SEED_EMPLOYEES = [];
 
   // Synced HR Employees - fallback seeds to SEED_EMPLOYEES on first launch
   const [hrEmployees, setHrEmployees] = useState<any[]>(() => {

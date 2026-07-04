@@ -19,6 +19,12 @@ import {
   Globe,
   Plus
 } from 'lucide-react';
+import { 
+  isSupabaseConfigured, 
+  pullAllCollectionsFromSupabase, 
+  pushAllCollectionsToSupabase, 
+  getSupabaseSetupSQL 
+} from '../lib/supabaseSync';
 
 interface BackupItem {
   id: string;
@@ -86,6 +92,48 @@ export default function BackupManager({ currentLanguage = 'FR', darkMode = false
   const [wipePassword, setWipePassword] = useState<string>('');
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wiping, setWiping] = useState<boolean>(false);
+
+  // Supabase Sync States
+  const [cloudSyncing, setCloudSyncing] = useState<boolean>(false);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [cloudSyncSuccess, setCloudSyncSuccess] = useState<string | null>(null);
+  const [showSqlInstructions, setShowSqlInstructions] = useState<boolean>(false);
+
+  const handleCloudPush = async () => {
+    setCloudSyncing(true);
+    setCloudSyncError(null);
+    setCloudSyncSuccess(null);
+    try {
+      const ok = await pushAllCollectionsToSupabase();
+      if (ok) {
+        setCloudSyncSuccess(currentLanguage === 'FR' ? "Toutes les manipulations locales ont été sauvegardées avec succès dans Supabase !" : "All browser states successfully backed up to Supabase!");
+      } else {
+        setCloudSyncError(currentLanguage === 'FR' ? "Impossible de sauvegarder sur Supabase. Vérifiez la configuration et que la table 'opticalize_sync' existe." : "Failed to sync with Supabase. Check configuration and table existence.");
+      }
+    } catch (err: any) {
+      setCloudSyncError(err.message || String(err));
+    } finally {
+      setCloudSyncing(false);
+    }
+  };
+
+  const handleCloudPull = async () => {
+    setCloudSyncing(true);
+    setCloudSyncError(null);
+    setCloudSyncSuccess(null);
+    try {
+      const ok = await pullAllCollectionsFromSupabase();
+      if (ok) {
+        setCloudSyncSuccess(currentLanguage === 'FR' ? "Données récupérées avec succès depuis Supabase ! Les données locales ont été mises à jour." : "Browser states successfully restored from Supabase!");
+      } else {
+        setCloudSyncError(currentLanguage === 'FR' ? "Aucune donnée trouvée ou échec de la connexion. Assurez-vous d'avoir exécuté la requête d'initialisation SQL." : "No data found or connection failed. Ensure SQL setup is run.");
+      }
+    } catch (err: any) {
+      setCloudSyncError(err.message || String(err));
+    } finally {
+      setCloudSyncing(false);
+    }
+  };
 
   const getHeaders = () => {
     const token = localStorage.getItem('optic_access_token');
