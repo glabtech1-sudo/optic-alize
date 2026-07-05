@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { storageService } from './storage.service';
 import { authenticateToken, requirePermission, enforceTenantIsolation, AuthenticatedRequest } from '../../core/tenant';
-import { dbSaveAuditLog } from '../../../db';
+import { supabaseClient } from '../../../supabaseSync';
 
 const storageRouter = Router();
 
@@ -13,6 +13,28 @@ const uploadFileSchema = z.object({
   base64Data: z.string().min(1, 'Données base64 requises'),
   isPrivate: z.boolean().default(true)
 });
+
+// Helper to save Audit Logs directly in Supabase PostgreSQL
+async function saveAuditLogSupabase(log: { companyId: string; userId: string; userEmail: string; action: string; details: string }) {
+  if (!supabaseClient) {
+    console.log('[AUDIT LOG LOCAL]', log);
+    return;
+  }
+  try {
+    const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    await supabaseClient.from('opticalize_sync').insert({
+      collection_name: `audit_log_${logId}`,
+      data: {
+        id: logId,
+        ...log,
+        timestamp: new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('[AUDIT LOG] Error saving log to Supabase:', err);
+  }
+}
 
 /**
  * Endpoint: List all files for the current tenant
@@ -27,7 +49,6 @@ storageRouter.get(
       const role = req.user?.role || 'Viewer';
       const files = await storageService.listFiles(companyId, role);
       
-      // Map files to include secure direct download URLs
       const filesWithUrls = await Promise.all(
         files.map(async (f) => {
           try {
@@ -47,7 +68,7 @@ storageRouter.get(
 );
 
 /**
- * Endpoint: Upload a file (Base64 format for safe sandbox payload handling)
+ * Endpoint: Upload a file
  */
 storageRouter.post(
   '/storage/upload',
@@ -55,14 +76,12 @@ storageRouter.post(
   enforceTenantIsolation as any,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
-      // Validate payload with Zod
       const payload = uploadFileSchema.parse(req.body);
 
       const companyId = req.user?.companyId || 'TG';
       const userId = req.user?.id || 'anonymous';
       const userEmail = req.user?.email || 'unknown';
 
-      // Convert Base64 back to binary Buffer
       const buffer = Buffer.from(payload.base64Data, 'base64');
 
       const uploadedFile = await storageService.uploadFile(
@@ -76,16 +95,14 @@ storageRouter.post(
         payload.isPrivate
       );
 
-      // Save Audit Log
-      await dbSaveAuditLog({
+      await saveAuditLogSupabase({
         companyId,
         userId,
         userEmail,
         action: 'STORAGE_UPLOAD',
         details: `Téléchargement réussi du fichier '${payload.originalname}' (${payload.mimetype}, ${buffer.length} octets) en mode ${payload.isPrivate ? 'PRIVÉ' : 'PUBLIC'}. ID du fichier: ${uploadedFile.id}.`
-      }, companyId);
+      });
 
-      // Generate secure download URL for response
       const downloadUrl = await storageService.getDownloadUrl(uploadedFile.id, companyId, req.user?.role || 'Viewer');
 
       res.status(201).json({
@@ -122,16 +139,14 @@ storageRouter.get(
         return res.status(404).json({ error: 'Fichier introuvable ou accès refusé.' });
       }
 
-      // Save Audit Log
-      await dbSaveAuditLog({
+      await saveAuditLogSupabase({
         companyId,
         userId,
         userEmail,
         action: 'STORAGE_DOWNLOAD',
         details: `Fichier '${fileData.originalname}' (ID: ${fileId}) consulté et téléchargé par l'utilisateur.`
-      }, companyId);
+      });
 
-      // Send appropriate headers and response buffer
       res.setHeader('Content-Type', fileData.mimetype);
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileData.originalname)}"`);
       res.send(fileData.buffer);
@@ -147,7 +162,7 @@ storageRouter.get(
 storageRouter.delete(
   '/storage/files/:id',
   authenticateToken as any,
-  requirePermission('delete:users') as any, // Only users with administrative rights can delete
+  requirePermission('delete:users') as any, 
   enforceTenantIsolation as any,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
@@ -162,14 +177,13 @@ storageRouter.delete(
         return res.status(404).json({ error: 'Fichier introuvable.' });
       }
 
-      // Save Audit Log
-      await dbSaveAuditLog({
+      await saveAuditLogSupabase({
         companyId,
         userId,
         userEmail,
         action: 'STORAGE_DELETE',
         details: `Fichier ID '${fileId}' supprimé définitivement du stockage.`
-      }, companyId);
+      });
 
       res.json({ success: true, message: 'Fichier supprimé définitivement.' });
     } catch (err) {

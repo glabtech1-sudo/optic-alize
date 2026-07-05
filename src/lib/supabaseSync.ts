@@ -1,15 +1,23 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Retrieve credentials from environment variables (standard Vite env setup)
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || '';
+// Support both Node.js (process.env) and Vite (import.meta.env) with robust fallback defaults
+const envUrl = (typeof process !== 'undefined' && process.env?.SUPABASE_URL)
+  ? process.env.SUPABASE_URL
+  : ((typeof (import.meta as any).env !== 'undefined' && (import.meta as any).env.VITE_SUPABASE_URL)
+      ? (import.meta as any).env.VITE_SUPABASE_URL
+      : 'https://vgcarfflqjfbrevfnlyd.supabase.co');
 
-let supabaseClient: SupabaseClient | null = null;
+const envAnonKey = (typeof process !== 'undefined' && process.env?.SUPABASE_ANON_KEY)
+  ? process.env.SUPABASE_ANON_KEY
+  : ((typeof (import.meta as any).env !== 'undefined' && (import.meta as any).env.VITE_SUPABASE_ANON_KEY)
+      ? (import.meta as any).env.VITE_SUPABASE_ANON_KEY
+      : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZnY2FyZmZscWpmYnJldmZubHlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MzU3MjIsImV4cCI6MjA5ODQxMTcyMn0.zc2yUKz7_6h-6_Mxw9MmMTatZ1lb1PwUvjGiai8Q2DU');
 
-// Initialize only if keys are present
-if (supabaseUrl && supabaseAnonKey) {
+export let supabaseClient: SupabaseClient | null = null;
+
+if (envUrl && envAnonKey) {
   try {
-    supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    supabaseClient = createClient(envUrl, envAnonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -20,7 +28,7 @@ if (supabaseUrl && supabaseAnonKey) {
     console.error('[SUPABASE] Failed to initialize client:', err);
   }
 } else {
-  console.log('[SUPABASE] Pending configuration. Define VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable cloud persistence.');
+  console.log('[SUPABASE] Pending configuration.');
 }
 
 export function isSupabaseConfigured(): boolean {

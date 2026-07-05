@@ -408,6 +408,11 @@ export default function SaaSSettings({
     }, 100);
   };
 
+  const FormOrDiv = ['profile', 'organization'].includes(activeSettingsCategory) ? 'form' : 'div';
+  const formOrDivProps = FormOrDiv === 'form' 
+    ? { onSubmit: handleSaveSettings, className: "space-y-6" } 
+    : { className: "space-y-6" };
+
   return (
     <div className={`p-1 space-y-6 ${darkMode ? 'dark text-[#F8FAFC]' : 'text-[#0F172A]'}`}>
       <div>
@@ -542,7 +547,7 @@ export default function SaaSSettings({
           {/* OTHER SUB-SETTINGS FORMS BLOCK */}
           {activeSettingsCategory !== 'super_admin_hq' && activeSettingsCategory !== 'dev_portal' && activeSettingsCategory !== 'storage' && (
             <div className={`p-6 rounded-xl bg-white text-xs`}>
-              <form onSubmit={handleSaveSettings} className="space-y-6">
+              <FormOrDiv {...formOrDivProps}>
                 
                 {/* SUBSECTION A: PROFILE */}
                 {activeSettingsCategory === 'profile' && (
@@ -1238,7 +1243,7 @@ export default function SaaSSettings({
                 )}
 
                 {/* SAVE ACTION BUTTON */}
-                {activeSettingsCategory !== 'api' && activeSettingsCategory !== 'sauvegarde' && (
+                {['profile', 'organization'].includes(activeSettingsCategory) && (
                   <div className={`flex justify-between items-center pt-4 border-t border-slate-100`}>
                     <div className="text-[10px] text-slate-400">
                       Enregistrez pour synchroniser vos préférences d'interface.
@@ -1263,7 +1268,7 @@ export default function SaaSSettings({
                   </div>
                 )}
 
-              </form>
+              </FormOrDiv>
             </div>
           )}
         </div>

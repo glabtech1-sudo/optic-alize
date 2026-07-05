@@ -8,18 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import {
-  dbGetUsers,
-  dbUpsertUser,
-  dbDeleteUser,
-  dbCreateBackup
-} from './src/lib/db';
-import {
-  hashPassword,
-  comparePassword
-} from './src/lib/server/core/security';
 import apiRouter from './src/lib/server/router';
-import { backupService } from './src/lib/server/modules/backup/backup.service';
 import { z } from 'zod';
 
 async function startServer() {
@@ -64,7 +53,6 @@ async function startServer() {
   });
   app.use('/api/', apiLimiter);
 
-  // Parse JSON payloads early so that sanitization and subsequent middlewares can inspect req.body
   app.use(express.json());
 
   // 4. XSS Sanitization Middleware
@@ -100,7 +88,6 @@ async function startServer() {
       const origin = req.headers.origin || req.headers.referer;
       const host = req.headers.host;
       if (origin && host) {
-        // Allow same-origin, local development, and the platform's Cloud Run sandbox subdomains (.run.app / google.com)
         const isCloudRun = origin.includes('.run.app') || origin.includes('google.com');
         const isLocal = origin.includes('localhost') || origin.includes('127.0.0.1');
         const isHostMatched = origin.includes(host);
@@ -113,121 +100,6 @@ async function startServer() {
     next();
   });
 
-  // Helper de migration et de seeding de comptes démo avec hashage bcrypt sécurisé
-  async function seedDefaultAuthUsers() {
-    try {
-      const existingUsers = await dbGetUsers();
-      console.log(`[AUTH SEED] Checking ${existingUsers.length} existing users for bcrypt migrations...`);
-      
-      const adminEmail = 'glabtech1@opticalize.com';
-      const adminUser = existingUsers.find(u => u.email.toLowerCase() === adminEmail);
-      const hp = await hashPassword('Gildas@00741');
-      
-      if (!adminUser) {
-        await dbUpsertUser({
-          id: 'USR-ADMIN-1',
-          name: 'Glabtech1 Super Admin',
-          email: adminEmail,
-          password: hp,
-          role: 'Admin',
-          status: 'Active',
-          phone: '+221 77 124 55 93',
-          location: 'Optic Alizé - Dépôt Central',
-          allowedBoutiques: ['BOU-01'],
-          allowedModules: ['dashboard', 'orders', 'crm', 'accounting', 'hr', 'stock', 'sav', 'settings']
-        });
-        console.log('[AUTH SEED] Seeded default Super Admin with secure bcrypt password.');
-      } else {
-        const matches = await comparePassword('Gildas@00741', adminUser.password || '');
-        if (!matches || adminUser.role !== 'Admin') {
-          await dbUpsertUser({
-            ...adminUser,
-            role: 'Admin',
-            password: hp
-          });
-          console.log('[AUTH SEED] Reset and repaired password/role for Glabtech1 Super Admin.');
-        }
-      }
-
-      // Seeding pour anges.gildas@opticalize.com
-      const angesEmail = 'anges.gildas@opticalize.com';
-      const angesUser = existingUsers.find(u => u.email.toLowerCase() === angesEmail);
-      if (!angesUser) {
-        await dbUpsertUser({
-          id: 'USR-GILDAS-ALT',
-          name: 'Gildas Concepteur Alt',
-          email: angesEmail,
-          password: hp,
-          role: 'Concepteur',
-          status: 'Active',
-          phone: '+221 77 124 55 93',
-          location: 'Optic Alizé - Dépôt Central',
-          allowedBoutiques: ['BOU-01'],
-          allowedModules: ['dashboard', 'orders', 'crm', 'accounting', 'hr', 'stock', 'sav', 'settings', 'fidelisation', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports']
-        });
-        console.log('[AUTH SEED] Seeded default Gildas Alt Super Admin with secure bcrypt password.');
-      } else {
-        const matches = await comparePassword('Gildas@00741', angesUser.password || '');
-        if (!matches || angesUser.role !== 'Concepteur') {
-          await dbUpsertUser({
-            ...angesUser,
-            role: 'Concepteur',
-            password: hp
-          });
-          console.log('[AUTH SEED] Reset and repaired password/role for Gildas Alt.');
-        }
-      }
-
-      // Seeding pour anges.gildas@opticalizé.com
-      const accentedEmail = 'anges.gildas@opticalizé.com';
-      const accentedUser = existingUsers.find(u => u.email.toLowerCase() === accentedEmail);
-      if (!accentedUser) {
-        await dbUpsertUser({
-          id: 'USR-GILDAS',
-          name: 'Gildas Concepteur',
-          email: accentedEmail,
-          password: hp,
-          role: 'Concepteur',
-          status: 'Active',
-          phone: '+221 77 124 55 93',
-          location: 'Optic Alizé - Dépôt Central',
-          allowedBoutiques: ['BOU-01'],
-          allowedModules: ['dashboard', 'orders', 'crm', 'accounting', 'hr', 'stock', 'sav', 'settings', 'fidelisation', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports']
-        });
-        console.log('[AUTH SEED] Seeded default Gildas Accented Super Admin with secure bcrypt password.');
-      } else {
-        const matches = await comparePassword('Gildas@00741', accentedUser.password || '');
-        if (!matches || accentedUser.role !== 'Concepteur') {
-          await dbUpsertUser({
-            ...accentedUser,
-            role: 'Concepteur',
-            password: hp
-          });
-          console.log('[AUTH SEED] Reset and repaired password/role for Gildas Accented.');
-        }
-      }
-
-      // Supprimer tous les autres comptes d'accès conformément à la demande :
-      // "supprimer les compte cree dans utilisateurs crm acces comme dans RH sauf glabtech1@opticalize.com et anges.gildas@opticalize.com"
-      const permittedEmails = [
-        'glabtech1@opticalize.com',
-        'anges.gildas@opticalize.com',
-        'anges.gildas@opticalizé.com'
-      ];
-      for (const u of existingUsers) {
-        if (u.email && !permittedEmails.includes(u.email.toLowerCase().trim())) {
-          await dbDeleteUser(u.email);
-          console.log(`[AUTH SEED] Deleted non-permitted user account: ${u.email}`);
-        }
-      }
-    } catch (err) {
-      console.error('[AUTH SEED] Error running user seed/migration:', err);
-    }
-  }
-
-  // Executer le seeding au démarrage
-  await seedDefaultAuthUsers();
-
   // 6. Mount Enterprise Modular Router
   app.use('/api', apiRouter);
 
@@ -235,7 +107,6 @@ async function startServer() {
   app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('[API ERROR]', err);
 
-    // Zod validation errors
     if (err instanceof z.ZodError || err.name === 'ZodError') {
       return res.status(400).json({
         error: 'Échec de validation des données',
@@ -275,7 +146,6 @@ async function startServer() {
     socket: WebSocket;
   }
 
-  // In-memory data store for messages, announcements, locks & clients
   const activeClients = new Map<string, ClientInfo>();
   const activeLocks = new Map<string, { userId: string, username: string, documentId: string, lockedAt: string }>();
   
@@ -326,7 +196,6 @@ async function startServer() {
     console.log(`[Optic Alizé dev Server] Running on http://localhost:${PORT}`);
   });
 
-  // Attach real WebSocket Server (wss) to same port 3000
   const wss = new WebSocketServer({ server });
 
   const broadcast = (payload: any, excludeClientId?: string) => {
@@ -583,14 +452,6 @@ async function startServer() {
       }
     });
   });
-
-  // Start centralized backup service scheduler
-  try {
-    backupService.startScheduler();
-    console.log('[BACKUP SERVICE] Initialized backup service and scheduler.');
-  } catch (err) {
-    console.error('[BACKUP SERVICE] Failed to initialize backup scheduler:', err);
-  }
 }
 
 startServer();
