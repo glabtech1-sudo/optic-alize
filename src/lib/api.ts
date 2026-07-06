@@ -1,4 +1,4 @@
-import { supabaseClient, unpackData } from './supabaseSync';
+import { supabaseClient, unpackData, missingTables } from './supabaseSync';
 
 export function getAccessToken(): string | null {
   return localStorage.getItem('optic_access_token');
@@ -61,30 +61,42 @@ function getTableNameForKey(key: string): string | null {
 // Global Supabase-backed JSON collections.
 // Reads and writes from dedicated PostgreSQL tables in Supabase with RLS policies, isolated by agency (boutique_name)
 async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Promise<T> {
+  const localVal = typeof window !== 'undefined' ? localStorage.getItem(fallbackKey) : null;
+  const parsedLocal = localVal ? JSON.parse(localVal) : null;
+
   if (!supabaseClient) {
-    console.warn('[SUPABASE] Client not configured. Returning default value for', fallbackKey);
-    return defaultVal;
+    console.warn('[SUPABASE] Client not configured. Returning local storage value for', fallbackKey);
+    return (parsedLocal !== null ? parsedLocal : defaultVal) as T;
   }
 
   const tableName = getTableNameForKey(fallbackKey);
   const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
 
   try {
-    if (tableName) {
-      // Direct SQL CRUD select operation from its respective table
-      const { data, error } = await supabaseClient
-        .from(tableName)
-        .select('data')
-        .eq('boutique_name', boutiqueName);
+    // 1. Try to load from dedicated table first if it exists and hasn't been flagged as missing
+    if (tableName && !missingTables[tableName]) {
+      try {
+        const { data, error } = await supabaseClient
+          .from(tableName)
+          .select('data')
+          .eq('boutique_name', boutiqueName);
 
-      if (!error && data) {
-        const items = data.map(row => unpackData(row.data));
-        return items as unknown as T;
-      } else if (error) {
-        console.error(`[SUPABASE FETCH] Error loading table ${tableName}:`, error);
+        if (!error && data) {
+          const items = data.map(row => unpackData(row.data));
+          return items as unknown as T;
+        } else if (error) {
+          console.warn(`[SUPABASE FETCH] Table "${tableName}" load failed, flagging table and falling back:`, error);
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            missingTables[tableName] = true;
+          }
+        }
+      } catch (tableErr) {
+        missingTables[tableName] = true;
       }
-    } else {
-      // Core fallback table (opticalize_sync) for simpler/non-mapped app configurations
+    }
+
+    // 2. Try to fallback to the core 'opticalize_sync' table
+    try {
       const { data, error } = await supabaseClient
         .from('opticalize_sync')
         .select('data')
@@ -95,170 +107,197 @@ async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Pro
       if (!error && data && data.data) {
         return unpackData(data.data) as T;
       }
+    } catch (fallbackErr) {
+      console.warn(`[SUPABASE FETCH] Core fallback table sync also failed:`, fallbackErr);
     }
   } catch (err) {
     console.error(`[SUPABASE FETCH] Exception loading ${fallbackKey}:`, err);
   }
-  return defaultVal;
+
+  // 3. Perfect fallback to local cached state to ensure we NEVER wipe out user data!
+  return (parsedLocal !== null ? parsedLocal : defaultVal) as T;
 }
 
 async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<T | null> {
+  const localVal = typeof window !== 'undefined' ? localStorage.getItem(fallbackKey) : null;
+  let localList: any[] = [];
+  if (localVal) {
+    try {
+      const parsed = JSON.parse(localVal);
+      localList = Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {
+      localList = [];
+    }
+  }
+
+  // Merge/Add item to local state array
+  if (body && typeof body === 'object') {
+    const idField = body.id ? 'id' : (body.email ? 'email' : null);
+    if (idField) {
+      const index = localList.findIndex((item: any) => item && item[idField] === body[idField]);
+      if (index !== -1) {
+        localList[index] = { ...localList[index], ...body };
+      } else {
+        localList.push(body);
+      }
+    } else {
+      localList.push(body);
+    }
+  } else {
+    localList = body;
+  }
+
+  // Optimistically save to local storage immediately so UI is extremely fast and has zero data loss risk
+  localStorage.setItem(fallbackKey, JSON.stringify(localList));
+  window.dispatchEvent(new Event('storage'));
+
   if (!supabaseClient) {
-    console.warn('[SUPABASE] Client not configured. Cannot save', fallbackKey);
-    return null;
+    console.warn('[SUPABASE] Client not configured. Saved locally for', fallbackKey);
+    return body as T;
   }
 
   const tableName = getTableNameForKey(fallbackKey);
   const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
 
   try {
-    if (tableName) {
-      // Process items to insert/update (upsert) in separate relational rows
-      const items = Array.isArray(body) ? body : [body];
-      
-      for (const item of items) {
-        if (!item || typeof item !== 'object') continue;
-        const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
-        
-        const payload = {
-          id: String(itemId),
-          boutique_name: boutiqueName,
-          data: { value: item },
-          updated_at: new Date().toISOString()
-        };
+    let syncSuccess = false;
 
-        const { error: upsertErr } = await supabaseClient
-          .from(tableName)
-          .upsert(payload, { onConflict: 'id' });
+    // Try dedicated table first
+    if (tableName && !missingTables[tableName]) {
+      try {
+        const items = Array.isArray(body) ? body : [body];
+        let hasError = false;
 
-        if (upsertErr) {
-          console.error(`[SUPABASE WRITE ERROR] Table ${tableName} upsert failed:`, upsertErr);
-        }
-      }
+        for (const item of items) {
+          if (!item || typeof item !== 'object') continue;
+          const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
+          
+          const payload = {
+            id: String(itemId),
+            boutique_name: boutiqueName,
+            data: { value: item },
+            updated_at: new Date().toISOString()
+          };
 
-      // Sync local reactive cache to keep component state updated instantly
-      const allItems = await apiFetch<any[]>('', fallbackKey, []);
-      localStorage.setItem(fallbackKey, JSON.stringify(allItems));
-      window.dispatchEvent(new Event('storage'));
-      return body as T;
+          const { error: upsertErr } = await supabaseClient
+            .from(tableName)
+            .upsert(payload, { onConflict: 'id' });
 
-    } else {
-      // 1. Load current collection data
-      const { data: row, error: fetchErr } = await supabaseClient
-        .from('opticalize_sync')
-        .select('data')
-        .eq('collection_name', fallbackKey)
-        .eq('boutique_name', boutiqueName)
-        .maybeSingle();
-
-      let list: any[] = [];
-      if (!fetchErr && row && row.data) {
-        const unpacked = unpackData(row.data);
-        list = Array.isArray(unpacked) ? unpacked : [unpacked];
-      }
-
-      // 2. Append/Upsert item in list
-      if (body && typeof body === 'object') {
-        const idField = body.id ? 'id' : (body.email ? 'email' : null);
-        if (idField) {
-          const index = list.findIndex((item: any) => item && item[idField] === body[idField]);
-          if (index !== -1) {
-            list[index] = { ...list[index], ...body };
-          } else {
-            list.push(body);
+          if (upsertErr) {
+            console.warn(`[SUPABASE WRITE WARNING] Table ${tableName} upsert failed, flagging table and falling back:`, upsertErr);
+            if (upsertErr.code === '42P01' || upsertErr.message?.includes('does not exist')) {
+              missingTables[tableName] = true;
+            }
+            hasError = true;
+            break;
           }
-        } else {
-          list.push(body);
         }
-      } else {
-        list = body;
+        if (!hasError) {
+          syncSuccess = true;
+        }
+      } catch (tableNameErr) {
+        missingTables[tableName] = true;
       }
+    }
 
-      // 3. Upsert to Supabase PostgreSQL table
+    // Try core fallback table
+    if (!syncSuccess) {
       const { error: upsertErr } = await supabaseClient
         .from('opticalize_sync')
         .upsert({
           collection_name: fallbackKey,
           boutique_name: boutiqueName,
-          data: { value: list },
+          data: { value: localList },
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'collection_name,boutique_name'
         });
 
       if (!upsertErr) {
-        localStorage.setItem(fallbackKey, JSON.stringify(list));
-        window.dispatchEvent(new Event('storage'));
-        return body as T;
+        syncSuccess = true;
       } else {
-        console.error(`[SUPABASE WRITE ERROR]`, upsertErr);
+        console.error(`[SUPABASE WRITE ERROR] Central table fallback failed:`, upsertErr);
       }
+    }
+
+    if (syncSuccess) {
+      console.log(`[SUPABASE POST] Successfully synced "${fallbackKey}" to cloud.`);
     }
   } catch (err) {
     console.error(`[SUPABASE POST] Exception writing ${fallbackKey}:`, err);
   }
-  return null;
+
+  return body as T;
 }
 
 // Helper to delete from a Supabase collection
 async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): Promise<boolean> {
-  if (!supabaseClient) return false;
+  const localVal = typeof window !== 'undefined' ? localStorage.getItem(fallbackKey) : null;
+  let localList: any[] = [];
+  if (localVal) {
+    try {
+      const parsed = JSON.parse(localVal);
+      localList = Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {
+      localList = [];
+    }
+  }
+
+  // Optimistically remove from local state
+  const filtered = localList.filter((item: any) => item && item[keyField] !== keyValue);
+  localStorage.setItem(fallbackKey, JSON.stringify(filtered));
+  window.dispatchEvent(new Event('storage'));
+
+  if (!supabaseClient) return true;
 
   const tableName = getTableNameForKey(fallbackKey);
   const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
 
   try {
-    if (tableName) {
-      // Direct SQL CRUD delete operation from its respective table
-      const { error } = await supabaseClient
-        .from(tableName)
-        .delete()
-        .eq('id', String(keyValue));
+    let deleteSuccess = false;
 
-      if (!error) {
-        // Sync local reactive cache to keep component state updated instantly
-        const allItems = await apiFetch<any[]>('', fallbackKey, []);
-        localStorage.setItem(fallbackKey, JSON.stringify(allItems));
-        window.dispatchEvent(new Event('storage'));
-        return true;
-      } else {
-        console.error(`[SUPABASE DELETE ERROR] Table ${tableName} deletion failed:`, error);
-      }
-    } else {
-      const { data: row, error: fetchErr } = await supabaseClient
-        .from('opticalize_sync')
-        .select('data')
-        .eq('collection_name', fallbackKey)
-        .eq('boutique_name', boutiqueName)
-        .maybeSingle();
+    if (tableName && !missingTables[tableName]) {
+      try {
+        const { error } = await supabaseClient
+          .from(tableName)
+          .delete()
+          .eq('id', String(keyValue));
 
-      if (!fetchErr && row && row.data) {
-        const unpacked = unpackData(row.data);
-        const list = Array.isArray(unpacked) ? unpacked : [];
-        const filtered = list.filter((item: any) => item && item[keyField] !== keyValue);
-        
-        const { error: upsertErr } = await supabaseClient
-          .from('opticalize_sync')
-          .upsert({
-            collection_name: fallbackKey,
-            boutique_name: boutiqueName,
-            data: { value: filtered },
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'collection_name,boutique_name'
-          });
-
-        if (!upsertErr) {
-          localStorage.setItem(fallbackKey, JSON.stringify(filtered));
-          window.dispatchEvent(new Event('storage'));
-          return true;
+        if (!error) {
+          deleteSuccess = true;
+        } else {
+          console.warn(`[SUPABASE DELETE WARNING] Table ${tableName} delete failed, flagging table and falling back:`, error);
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            missingTables[tableName] = true;
+          }
         }
+      } catch (tableErr) {
+        missingTables[tableName] = true;
       }
     }
+
+    if (!deleteSuccess) {
+      const { error: upsertErr } = await supabaseClient
+        .from('opticalize_sync')
+        .upsert({
+          collection_name: fallbackKey,
+          boutique_name: boutiqueName,
+          data: { value: filtered },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'collection_name,boutique_name'
+        });
+
+      if (!upsertErr) {
+        deleteSuccess = true;
+      }
+    }
+
+    return deleteSuccess;
   } catch (err) {
     console.error(`[SUPABASE DELETE] Exception deleting from ${fallbackKey}:`, err);
   }
-  return false;
+  return true;
 }
 
 // --- CORE AUTHENTICATION API CALLS (SUPABASE AUTH EXCLUSIVE) ---

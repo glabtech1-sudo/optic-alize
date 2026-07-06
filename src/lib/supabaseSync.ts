@@ -16,6 +16,7 @@ const envAnonKey = (typeof process !== 'undefined' && process.env?.SUPABASE_ANON
 export let supabaseClient: SupabaseClient | null = null;
 export let isSyncTableAvailable = true;
 export let hasWarnedSyncTableMissing = false;
+export const missingTables: Record<string, boolean> = {};
 
 if (envUrl && envAnonKey) {
   try {
@@ -68,32 +69,49 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
 
     const tableName = MAPPED_KEYS[key];
     const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+    let syncSuccess = false;
 
-    if (tableName) {
-      // Upsert into dedicated business data table
-      const items = Array.isArray(cleanData) ? cleanData : [cleanData];
-      for (const item of items) {
-        if (!item || typeof item !== 'object') continue;
-        const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
-        
-        const payload = {
-          id: String(itemId),
-          boutique_name: boutiqueName,
-          data: { value: item },
-          updated_at: new Date().toISOString()
-        };
+    if (tableName && !missingTables[tableName]) {
+      try {
+        // Upsert into dedicated business data table
+        const items = Array.isArray(cleanData) ? cleanData : [cleanData];
+        let hasError = false;
 
-        const { error: upsertErr } = await supabaseClient
-          .from(tableName)
-          .upsert(payload, { onConflict: 'id' });
+        for (const item of items) {
+          if (!item || typeof item !== 'object') continue;
+          const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
+          
+          const payload = {
+            id: String(itemId),
+            boutique_name: boutiqueName,
+            data: { value: item },
+            updated_at: new Date().toISOString()
+          };
 
-        if (upsertErr) {
-          console.error(`[SUPABASE SYNC ERROR] Table ${tableName} upsert failed:`, upsertErr);
+          const { error: upsertErr } = await supabaseClient
+            .from(tableName)
+            .upsert(payload, { onConflict: 'id' });
+
+          if (upsertErr) {
+            console.warn(`[SUPABASE SYNC WARNING] Table ${tableName} upsert failed, flagging table:`, upsertErr);
+            if (upsertErr.code === '42P01' || upsertErr.message?.includes('does not exist')) {
+              missingTables[tableName] = true;
+            }
+            hasError = true;
+            break;
+          }
         }
+        if (!hasError) {
+          syncSuccess = true;
+        }
+      } catch (tableNameErr) {
+        console.warn(`[SUPABASE SYNC] Table ${tableName} is not accessible, falling back.`, tableNameErr);
+        missingTables[tableName] = true;
       }
-      return true;
-    } else {
-      if (!isSyncTableAvailable) return false;
+    }
+
+    // Fallback to central opticalize_sync table if dedicated table failed/missing
+    if (!syncSuccess && isSyncTableAvailable) {
       const { error } = await supabaseClient
         .from('opticalize_sync')
         .upsert({
@@ -105,18 +123,19 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
           onConflict: 'collection_name,boutique_name'
         });
 
-      if (error) {
+      if (!error) {
+        syncSuccess = true;
+        console.log(`[SUPABASE SYNC] Successfully synced "${key}" to fallback opticalize_sync.`);
+      } else {
         if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
           isSyncTableAvailable = false;
         } else {
-          console.error(`[SUPABASE SYNC] Error syncing collection ${key}:`, JSON.stringify(error) || error);
+          console.error(`[SUPABASE SYNC] Error syncing collection ${key} to fallback:`, error);
         }
-        return false;
       }
-
-      console.log(`[SUPABASE SYNC] Successfully synced "${key}" to Supabase.`);
-      return true;
     }
+
+    return syncSuccess;
   } catch (err: any) {
     console.error(`[SUPABASE SYNC] Exception during sync for "${key}":`, err?.message || err);
     return false;
@@ -133,18 +152,28 @@ export async function loadCollectionFromSupabase(key: string): Promise<any | nul
   const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
 
   try {
-    if (tableName) {
-      const { data, error } = await supabaseClient
-        .from(tableName)
-        .select('data')
-        .eq('boutique_name', boutiqueName);
+    if (tableName && !missingTables[tableName]) {
+      try {
+        const { data, error } = await supabaseClient
+          .from(tableName)
+          .select('data')
+          .eq('boutique_name', boutiqueName);
 
-      if (!error && data) {
-        return data.map(row => unpackData(row.data));
+        if (!error && data) {
+          return data.map(row => unpackData(row.data));
+        } else if (error) {
+          console.warn(`[SUPABASE LOAD] Mapped table ${tableName} load failed, flagging table:`, error);
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            missingTables[tableName] = true;
+          }
+        }
+      } catch (tableNameErr) {
+        missingTables[tableName] = true;
       }
-      return null;
-    } else {
-      if (!isSyncTableAvailable) return null;
+    }
+
+    // Try central table opticalize_sync fallback
+    if (isSyncTableAvailable) {
       const { data, error } = await supabaseClient
         .from('opticalize_sync')
         .select('data')
@@ -152,26 +181,22 @@ export async function loadCollectionFromSupabase(key: string): Promise<any | nul
         .eq('boutique_name', boutiqueName)
         .maybeSingle();
 
-      if (error) {
+      if (!error && data && data.data) {
+        console.log(`[SUPABASE LOAD] Retrieved "${key}" from fallback opticalize_sync.`);
+        return unpackData(data.data);
+      } else if (error) {
         if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
           isSyncTableAvailable = false;
         } else {
-          console.error(`[SUPABASE LOAD] Error loading collection ${key}:`, error);
+          console.error(`[SUPABASE LOAD] Error loading fallback collection ${key}:`, error);
         }
-        return null;
       }
-
-      if (data && data.data) {
-        console.log(`[SUPABASE LOAD] Retrieved "${key}" from Supabase.`);
-        return unpackData(data.data);
-      }
-
-      return null;
     }
   } catch (err) {
     console.error(`[SUPABASE LOAD] Exception during loading for "${key}":`, err);
-    return null;
   }
+
+  return null;
 }
 
 export const SYNCABLE_KEYS = [
@@ -191,7 +216,25 @@ export const SYNCABLE_KEYS = [
   'optic_boutiques',
   'optic_app_logo_base64',
   'optic_app_logo',
-  'optic_boutique_name'
+  'optic_boutique_name',
+  'optic_crm_customers',
+  'optic_fused_catalog',
+  'optic_saas_orders',
+  'optic_my_clinic_appointments',
+  'optic_my_clinic_exams',
+  'optic_my_prescriptions',
+  'optic_hq_companies',
+  'optic_accounting_revenues',
+  'optic_accounting_expenses',
+  'optic_accounting_sessions',
+  'optic_accounting_momo',
+  'optic_stock_items',
+  'optic_stock_history',
+  'optic_sav_claims',
+  'optic_push_logs',
+  'optic_accounting_boutique_balances',
+  'optic_pos_products',
+  'optic_credited_loyalty_orders'
 ];
 
 export const MAPPED_KEYS: Record<string, string> = {
@@ -260,9 +303,15 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
             localStorage.setItem(key, stringified);
             updatedAny = true;
           }
+        } else if (error) {
+          console.warn(`[SUPABASE PULL WARNING] Table ${tableName} load failed, flagging table:`, error);
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            missingTables[tableName] = true;
+          }
         }
       } catch (err) {
         console.error(`[SUPABASE PULL] Failed to pull dedicated table ${tableName}:`, err);
+        missingTables[tableName] = true;
       }
     }
 
@@ -275,7 +324,10 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
 
       if (!error && data && data.length > 0) {
         data.forEach((row: any) => {
-          if (SYNCABLE_KEYS.includes(row.collection_name) && !MAPPED_KEYS[row.collection_name]) {
+          const isMapped = !!MAPPED_KEYS[row.collection_name];
+          const isMappedTableMissing = isMapped && missingTables[MAPPED_KEYS[row.collection_name]];
+
+          if (SYNCABLE_KEYS.includes(row.collection_name) && (!isMapped || isMappedTableMissing)) {
             const unpacked = unpackData(row.data);
             const stringified = typeof unpacked === 'string' ? unpacked : JSON.stringify(unpacked);
             const currentVal = localStorage.getItem(row.collection_name);
