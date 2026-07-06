@@ -288,9 +288,11 @@ CREATE POLICY "Payslips manageable by admins/comptables" ON public.payslips
 -- 8. GLOBAL FALLBACK SYNC TABLE
 -- ==========================================
 CREATE TABLE IF NOT EXISTS public.opticalize_sync (
-    collection_name TEXT NOT NULL PRIMARY KEY,
+    collection_name TEXT NOT NULL,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
     data JSONB NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    PRIMARY KEY (collection_name, boutique_name)
 );
 
 -- Enable Row Level Security (RLS)
@@ -301,4 +303,99 @@ CREATE POLICY "Allow public full access" ON public.opticalize_sync
     FOR ALL
     USING (true)
     WITH CHECK (true);
+
+
+-- ==========================================
+-- 9. DEDICATED BUSINESS DATA TABLES
+-- ==========================================
+
+-- CRM Patients/Customers
+CREATE TABLE IF NOT EXISTS public.crm_customers (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.crm_customers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on crm_customers" ON public.crm_customers FOR ALL USING (true) WITH CHECK (true);
+
+-- Product Catalog
+CREATE TABLE IF NOT EXISTS public.fused_catalog (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.fused_catalog ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on fused_catalog" ON public.fused_catalog FOR ALL USING (true) WITH CHECK (true);
+
+-- SaaS Orders/Invoices
+CREATE TABLE IF NOT EXISTS public.saas_orders (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.saas_orders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on saas_orders" ON public.saas_orders FOR ALL USING (true) WITH CHECK (true);
+
+-- Audit Logs
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on audit_logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- Clinic Appointments
+CREATE TABLE IF NOT EXISTS public.my_clinic_appointments (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.my_clinic_appointments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on my_clinic_appointments" ON public.my_clinic_appointments FOR ALL USING (true) WITH CHECK (true);
+
+-- Clinic Sight Exams
+CREATE TABLE IF NOT EXISTS public.my_clinic_exams (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.my_clinic_exams ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on my_clinic_exams" ON public.my_clinic_exams FOR ALL USING (true) WITH CHECK (true);
+
+-- Clinic Prescriptions
+CREATE TABLE IF NOT EXISTS public.my_prescriptions (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.my_prescriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on my_prescriptions" ON public.my_prescriptions FOR ALL USING (true) WITH CHECK (true);
+
+-- HQ Companies
+CREATE TABLE IF NOT EXISTS public.hq_companies (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.hq_companies ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on hq_companies" ON public.hq_companies FOR ALL USING (true) WITH CHECK (true);
+
+-- HQ Branches
+CREATE TABLE IF NOT EXISTS public.hq_branches (
+    id TEXT PRIMARY KEY,
+    boutique_name TEXT NOT NULL DEFAULT 'Global',
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.hq_branches ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public full access on hq_branches" ON public.hq_branches FOR ALL USING (true) WITH CHECK (true);
 

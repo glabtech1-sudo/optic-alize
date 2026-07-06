@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import apiRouter from './src/lib/server/router';
 import { z } from 'zod';
+import { runDatabaseMigration } from './src/lib/server/modules/database/dbMigration';
 
 async function startServer() {
   const app = express();
@@ -194,6 +195,8 @@ async function startServer() {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Optic Alizé dev Server] Running on http://localhost:${PORT}`);
+    // Run database auto-migrations to ensure tables exist in real-time
+    runDatabaseMigration().catch((e) => console.error('[SERVER] Migration failed:', e));
   });
 
   const wss = new WebSocketServer({ server });

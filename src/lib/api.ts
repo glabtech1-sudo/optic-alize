@@ -1,4 +1,4 @@
-import { supabaseClient } from './supabaseSync';
+import { supabaseClient, unpackData } from './supabaseSync';
 
 export function getAccessToken(): string | null {
   return localStorage.getItem('optic_access_token');
@@ -42,22 +42,59 @@ export interface AuthResponse {
   error?: string;
 }
 
+// Maps business/operation collection keys to dedicated PostgreSQL tables in Supabase
+function getTableNameForKey(key: string): string | null {
+  switch (key) {
+    case 'optic_crm_customers': return 'crm_customers';
+    case 'optic_fused_catalog': return 'fused_catalog';
+    case 'optic_saas_orders': return 'saas_orders';
+    case 'optic_audit_logs': return 'audit_logs';
+    case 'optic_my_clinic_appointments': return 'my_clinic_appointments';
+    case 'optic_my_clinic_exams': return 'my_clinic_exams';
+    case 'optic_my_prescriptions': return 'my_prescriptions';
+    case 'optic_hq_companies': return 'hq_companies';
+    case 'optic_hq_branches': return 'hq_branches';
+    default: return null;
+  }
+}
+
 // Global Supabase-backed JSON collections.
-// Under the hood, they all read and write from PostgreSQL Supabase using the 'opticalize_sync' table.
+// Reads and writes from dedicated PostgreSQL tables in Supabase with RLS policies, isolated by agency (boutique_name)
 async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Promise<T> {
   if (!supabaseClient) {
     console.warn('[SUPABASE] Client not configured. Returning default value for', fallbackKey);
     return defaultVal;
   }
+
+  const tableName = getTableNameForKey(fallbackKey);
+  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+
   try {
-    const { data, error } = await supabaseClient
-      .from('opticalize_sync')
-      .select('data')
-      .eq('collection_name', fallbackKey)
-      .maybeSingle();
-    
-    if (!error && data && data.data) {
-      return data.data as T;
+    if (tableName) {
+      // Direct SQL CRUD select operation from its respective table
+      const { data, error } = await supabaseClient
+        .from(tableName)
+        .select('data')
+        .eq('boutique_name', boutiqueName);
+
+      if (!error && data) {
+        const items = data.map(row => unpackData(row.data));
+        return items as unknown as T;
+      } else if (error) {
+        console.error(`[SUPABASE FETCH] Error loading table ${tableName}:`, error);
+      }
+    } else {
+      // Core fallback table (opticalize_sync) for simpler/non-mapped app configurations
+      const { data, error } = await supabaseClient
+        .from('opticalize_sync')
+        .select('data')
+        .eq('collection_name', fallbackKey)
+        .eq('boutique_name', boutiqueName)
+        .maybeSingle();
+      
+      if (!error && data && data.data) {
+        return unpackData(data.data) as T;
+      }
     }
   } catch (err) {
     console.error(`[SUPABASE FETCH] Exception loading ${fallbackKey}:`, err);
@@ -70,52 +107,92 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
     console.warn('[SUPABASE] Client not configured. Cannot save', fallbackKey);
     return null;
   }
+
+  const tableName = getTableNameForKey(fallbackKey);
+  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+
   try {
-    // 1. Load current collection data
-    const { data: row, error: fetchErr } = await supabaseClient
-      .from('opticalize_sync')
-      .select('data')
-      .eq('collection_name', fallbackKey)
-      .maybeSingle();
+    if (tableName) {
+      // Process items to insert/update (upsert) in separate relational rows
+      const items = Array.isArray(body) ? body : [body];
+      
+      for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
+        const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
+        
+        const payload = {
+          id: String(itemId),
+          boutique_name: boutiqueName,
+          data: { value: item },
+          updated_at: new Date().toISOString()
+        };
 
-    let list: any[] = [];
-    if (!fetchErr && row && row.data) {
-      list = Array.isArray(row.data) ? row.data : [row.data];
-    }
+        const { error: upsertErr } = await supabaseClient
+          .from(tableName)
+          .upsert(payload, { onConflict: 'id' });
 
-    // 2. Append/Upsert item in list
-    if (body && typeof body === 'object') {
-      const idField = body.id ? 'id' : (body.email ? 'email' : null);
-      if (idField) {
-        const index = list.findIndex((item: any) => item && item[idField] === body[idField]);
-        if (index !== -1) {
-          list[index] = { ...list[index], ...body };
+        if (upsertErr) {
+          console.error(`[SUPABASE WRITE ERROR] Table ${tableName} upsert failed:`, upsertErr);
+        }
+      }
+
+      // Sync local reactive cache to keep component state updated instantly
+      const allItems = await apiFetch<any[]>('', fallbackKey, []);
+      localStorage.setItem(fallbackKey, JSON.stringify(allItems));
+      window.dispatchEvent(new Event('storage'));
+      return body as T;
+
+    } else {
+      // 1. Load current collection data
+      const { data: row, error: fetchErr } = await supabaseClient
+        .from('opticalize_sync')
+        .select('data')
+        .eq('collection_name', fallbackKey)
+        .eq('boutique_name', boutiqueName)
+        .maybeSingle();
+
+      let list: any[] = [];
+      if (!fetchErr && row && row.data) {
+        const unpacked = unpackData(row.data);
+        list = Array.isArray(unpacked) ? unpacked : [unpacked];
+      }
+
+      // 2. Append/Upsert item in list
+      if (body && typeof body === 'object') {
+        const idField = body.id ? 'id' : (body.email ? 'email' : null);
+        if (idField) {
+          const index = list.findIndex((item: any) => item && item[idField] === body[idField]);
+          if (index !== -1) {
+            list[index] = { ...list[index], ...body };
+          } else {
+            list.push(body);
+          }
         } else {
           list.push(body);
         }
       } else {
-        list.push(body);
+        list = body;
       }
-    } else {
-      list = body;
-    }
 
-    // 3. Upsert to Supabase PostgreSQL table
-    const { error: upsertErr } = await supabaseClient
-      .from('opticalize_sync')
-      .upsert({
-        collection_name: fallbackKey,
-        data: list,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'collection_name'
-      });
+      // 3. Upsert to Supabase PostgreSQL table
+      const { error: upsertErr } = await supabaseClient
+        .from('opticalize_sync')
+        .upsert({
+          collection_name: fallbackKey,
+          boutique_name: boutiqueName,
+          data: { value: list },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'collection_name,boutique_name'
+        });
 
-    if (!upsertErr) {
-      window.dispatchEvent(new Event('storage'));
-      return body as T;
-    } else {
-      console.error(`[SUPABASE WRITE ERROR]`, upsertErr);
+      if (!upsertErr) {
+        localStorage.setItem(fallbackKey, JSON.stringify(list));
+        window.dispatchEvent(new Event('storage'));
+        return body as T;
+      } else {
+        console.error(`[SUPABASE WRITE ERROR]`, upsertErr);
+      }
     }
   } catch (err) {
     console.error(`[SUPABASE POST] Exception writing ${fallbackKey}:`, err);
@@ -126,30 +203,56 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
 // Helper to delete from a Supabase collection
 async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): Promise<boolean> {
   if (!supabaseClient) return false;
+
+  const tableName = getTableNameForKey(fallbackKey);
+  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+
   try {
-    const { data: row, error: fetchErr } = await supabaseClient
-      .from('opticalize_sync')
-      .select('data')
-      .eq('collection_name', fallbackKey)
-      .maybeSingle();
+    if (tableName) {
+      // Direct SQL CRUD delete operation from its respective table
+      const { error } = await supabaseClient
+        .from(tableName)
+        .delete()
+        .eq('id', String(keyValue));
 
-    if (!fetchErr && row && row.data) {
-      const list = Array.isArray(row.data) ? row.data : [];
-      const filtered = list.filter((item: any) => item && item[keyField] !== keyValue);
-      
-      const { error: upsertErr } = await supabaseClient
-        .from('opticalize_sync')
-        .upsert({
-          collection_name: fallbackKey,
-          data: filtered,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'collection_name'
-        });
-
-      if (!upsertErr) {
+      if (!error) {
+        // Sync local reactive cache to keep component state updated instantly
+        const allItems = await apiFetch<any[]>('', fallbackKey, []);
+        localStorage.setItem(fallbackKey, JSON.stringify(allItems));
         window.dispatchEvent(new Event('storage'));
         return true;
+      } else {
+        console.error(`[SUPABASE DELETE ERROR] Table ${tableName} deletion failed:`, error);
+      }
+    } else {
+      const { data: row, error: fetchErr } = await supabaseClient
+        .from('opticalize_sync')
+        .select('data')
+        .eq('collection_name', fallbackKey)
+        .eq('boutique_name', boutiqueName)
+        .maybeSingle();
+
+      if (!fetchErr && row && row.data) {
+        const unpacked = unpackData(row.data);
+        const list = Array.isArray(unpacked) ? unpacked : [];
+        const filtered = list.filter((item: any) => item && item[keyField] !== keyValue);
+        
+        const { error: upsertErr } = await supabaseClient
+          .from('opticalize_sync')
+          .upsert({
+            collection_name: fallbackKey,
+            boutique_name: boutiqueName,
+            data: { value: filtered },
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'collection_name,boutique_name'
+          });
+
+        if (!upsertErr) {
+          localStorage.setItem(fallbackKey, JSON.stringify(filtered));
+          window.dispatchEvent(new Event('storage'));
+          return true;
+        }
       }
     }
   } catch (err) {

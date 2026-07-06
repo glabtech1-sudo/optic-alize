@@ -101,6 +101,13 @@ authRouter.post(
 
       let targetUserId = payload.id;
 
+      // Ensure the targetUserId is a valid Supabase UUID.
+      // If it's a mock frontend ID (e.g., USR-0X), reset it to undefined to trigger creation or email lookup.
+      const isUuid = targetUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUserId);
+      if (!isUuid) {
+        targetUserId = undefined;
+      }
+
       // 1. If ID doesn't exist, check if email already exists in Supabase Auth
       if (!targetUserId) {
         const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();

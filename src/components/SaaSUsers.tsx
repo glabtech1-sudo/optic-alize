@@ -342,10 +342,10 @@ export default function SaaSUsers({
     if (!editingUser) return;
 
     const editEmailLower = editingUser.email.toLowerCase().trim();
-    if (!editEmailLower.endsWith('@opticalize.com') && !editEmailLower.endsWith('@opticalizé.com')) {
+    if (!editEmailLower.includes('@') || editEmailLower.length < 5) {
       alert(currentLanguage === 'FR' 
-        ? "Erreur : L'identifiant email doit obligatoirement se terminer par @opticalize.com" 
-        : "Error: The email identifier must end with @opticalize.com"
+        ? "Erreur : L'adresse email saisie n'est pas valide." 
+        : "Error: The entered email address is not valid."
       );
       return;
     }
@@ -380,10 +380,10 @@ export default function SaaSUsers({
     if (!newUserName || !newUserEmail) return;
 
     const emailLower = newUserEmail.toLowerCase().trim();
-    if (!emailLower.endsWith('@opticalize.com') && !emailLower.endsWith('@opticalizé.com')) {
+    if (!emailLower.includes('@') || emailLower.length < 5) {
       alert(currentLanguage === 'FR' 
-        ? "Erreur : L'identifiant email doit obligatoirement se terminer par @opticalize.com" 
-        : "Error: The email identifier must end with @opticalize.com"
+        ? "Erreur : L'adresse email saisie n'est pas valide." 
+        : "Error: The entered email address is not valid."
       );
       return;
     }
