@@ -296,35 +296,430 @@ export async function saveBranch(branch: any): Promise<any> {
 }
 
 export async function fetchUsers(): Promise<any[]> {
-  return apiFetch('', 'optic_users', []);
+  try {
+    const token = getAccessToken();
+    const res = await fetch('/api/auth/users', {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && body.users) {
+        return body.users;
+      }
+    }
+  } catch (e) {
+    console.error('[API] Error fetching auth users:', e);
+  }
+  const saved = localStorage.getItem('optic_users');
+  return saved ? JSON.parse(saved) : [];
 }
 
 export async function saveUser(user: any): Promise<any> {
-  const result = await apiPost('', user, 'optic_users');
-  
-  // Register in Supabase Authentication automatically
-  if (supabaseClient && user.email && user.password) {
-    try {
-      await supabaseClient.auth.signUp({
-        email: user.email,
-        password: user.password,
-        options: {
-          data: {
-            name: user.name,
-            role: user.role
-          }
-        }
-      });
-    } catch (e) {
-      console.warn('[SUPABASE AUTH] Auto-signup failed (user might already exist):', e);
+  try {
+    const token = getAccessToken();
+    const res = await fetch('/api/auth/users', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(user)
+    });
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && body.user) {
+        return body.user;
+      }
     }
+  } catch (e) {
+    console.error('[API] Error saving auth user:', e);
   }
-  
-  return result;
+  return user;
 }
 
-export async function deleteUser(email: string): Promise<boolean> {
-  return apiDelete('optic_users', 'email', email);
+export async function deleteUser(emailOrId: string): Promise<boolean> {
+  let targetId = emailOrId;
+  if (emailOrId.includes('@')) {
+    const users = await fetchUsers();
+    const found = users.find(u => u.email.toLowerCase() === emailOrId.toLowerCase());
+    if (found) {
+      targetId = found.id;
+    }
+  }
+  try {
+    const token = getAccessToken();
+    const res = await fetch(`/api/auth/users/${targetId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+    if (res.ok) {
+      const body = await res.json();
+      return !!body.success;
+    }
+  } catch (e) {
+    console.error('[API] Error deleting auth user:', e);
+  }
+  return false;
+}
+
+// --- RELATIONAL HR MODULE APIS (WITH SEAMLESS PostgreSQL RLS ENFORCEMENT) ---
+
+const warnedMissingTables = new Set<string>();
+
+function handleTableMissingError(tableName: string, error: any): boolean {
+  if (!error) return false;
+  const code = error.code;
+  const msg = error.message || '';
+  if (code === '42P01' || code === 'PGRST205' || msg.includes('does not exist') || msg.includes('schema cache')) {
+    if (!warnedMissingTables.has(tableName)) {
+      warnedMissingTables.add(tableName);
+      console.warn(`[API] Table "${tableName}" does not exist yet. Using local fallback. Run supabase_migration.sql schema script to configure cloud tables.`);
+    }
+    return true;
+  }
+  return false;
+}
+
+export async function fetchHREmployees(): Promise<any[]> {
+  if (!supabaseClient) return [];
+  try {
+    const { data, error } = await supabaseClient.from('employees').select('*');
+    if (!error && data) {
+      return data.map(e => ({
+        id: e.id,
+        firstName: e.first_name,
+        lastName: e.last_name,
+        position: e.position,
+        department: e.department,
+        email: e.email,
+        phone: e.phone,
+        hireDate: e.hire_date,
+        basicSalary: Number(e.basic_salary),
+        status: e.status,
+        boutique: e.boutique,
+        photo: e.photo,
+        pinCode: e.pin_code,
+        birthDate: e.birth_date,
+        idCardNumber: e.id_card_number,
+        contractType: e.contract_type,
+        faceIdRegistered: e.face_id_registered,
+        livenessProof: e.liveness_proof
+      }));
+    }
+    if (error) {
+      if (!handleTableMissingError('employees', error)) {
+        console.error('[API] Employees load error:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Exception loading employees:', e);
+  }
+  return [];
+}
+
+export async function saveHREmployee(emp: any): Promise<any> {
+  if (!supabaseClient) return emp;
+  try {
+    const payload = {
+      id: emp.id,
+      first_name: emp.firstName,
+      last_name: emp.lastName,
+      position: emp.position,
+      department: emp.department,
+      email: emp.email,
+      phone: emp.phone,
+      hire_date: emp.hireDate,
+      basic_salary: emp.basicSalary,
+      status: emp.status,
+      boutique: emp.boutique,
+      photo: emp.photo,
+      pin_code: emp.pinCode,
+      birth_date: emp.birthDate,
+      id_card_number: emp.idCardNumber,
+      contract_type: emp.contractType,
+      face_id_registered: !!emp.faceIdRegistered,
+      liveness_proof: !!emp.livenessProof,
+      company_id: 'TG'
+    };
+    const { error } = await supabaseClient.from('employees').upsert(payload);
+    if (error) {
+      if (!handleTableMissingError('employees', error)) {
+        console.error('[API] Error saving employee:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Exception saving employee:', e);
+  }
+  return emp;
+}
+
+export async function deleteHREmployee(id: string): Promise<boolean> {
+  if (!supabaseClient) return false;
+  try {
+    const { error } = await supabaseClient.from('employees').delete().eq('id', id);
+    if (error) {
+      if (!handleTableMissingError('employees', error)) {
+        console.error('[API] Error deleting employee:', error);
+      }
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[API] Exception deleting employee:', e);
+  }
+  return false;
+}
+
+export async function fetchAttendanceLedger(): Promise<any[]> {
+  if (!supabaseClient) return [];
+  try {
+    const { data, error } = await supabaseClient.from('attendance').select('*');
+    if (!error && data) {
+      return data.map(a => ({
+        id: a.id,
+        employeeId: a.employee_id,
+        employeeName: a.employee_name,
+        date: a.date,
+        status: a.status,
+        checkInTime: a.check_in_time,
+        pauseTime: a.pause_time,
+        repriseTime: a.reprise_time,
+        checkOutTime: a.check_out_time,
+        notes: a.notes,
+        photo: a.photo,
+        boutique: a.boutique,
+        gpsCoords: a.gps_coords,
+        facialMatchScore: Number(a.facial_match_score || 0)
+      }));
+    }
+    if (error) {
+      if (!handleTableMissingError('attendance', error)) {
+        console.error('[API] Error loading attendance:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Error fetching attendance:', e);
+  }
+  return [];
+}
+
+export async function saveAttendanceEntry(entry: any): Promise<any> {
+  if (!supabaseClient) return entry;
+  try {
+    const payload = {
+      id: entry.id,
+      employee_id: entry.employeeId,
+      employee_name: entry.employeeName,
+      date: entry.date,
+      status: entry.status,
+      check_in_time: entry.checkInTime,
+      pause_time: entry.pauseTime,
+      reprise_time: entry.repriseTime,
+      check_out_time: entry.checkOutTime,
+      notes: entry.notes,
+      photo: entry.photo,
+      boutique: entry.boutique,
+      gps_coords: entry.gpsCoords,
+      facial_match_score: entry.facialMatchScore,
+      company_id: 'TG'
+    };
+    const { error } = await supabaseClient.from('attendance').upsert(payload);
+    if (error) {
+      if (!handleTableMissingError('attendance', error)) {
+        console.error('[API] Error saving attendance:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Exception saving attendance:', e);
+  }
+  return entry;
+}
+
+export async function fetchLeaveRequests(): Promise<any[]> {
+  if (!supabaseClient) return [];
+  try {
+    const { data, error } = await supabaseClient.from('leaves').select('*');
+    if (!error && data) {
+      return data.map(l => ({
+        id: l.id,
+        employeeId: l.employee_id,
+        employeeName: l.employee_name,
+        leaveType: l.leave_type,
+        startDate: l.start_date,
+        endDate: l.end_date,
+        daysCount: l.days_count,
+        status: l.status,
+        reason: l.reason
+      }));
+    }
+    if (error) {
+      if (!handleTableMissingError('leaves', error)) {
+        console.error('[API] Error loading leaves:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Error fetching leaves:', e);
+  }
+  return [];
+}
+
+export async function saveLeaveRequest(req: any): Promise<any> {
+  if (!supabaseClient) return req;
+  try {
+    const payload = {
+      id: req.id,
+      employee_id: req.employeeId,
+      employee_name: req.employeeName,
+      leave_type: req.leaveType,
+      start_date: req.startDate,
+      end_date: req.endDate,
+      days_count: req.daysCount,
+      status: req.status,
+      reason: req.reason,
+      company_id: 'TG'
+    };
+    const { error } = await supabaseClient.from('leaves').upsert(payload);
+    if (error) {
+      if (!handleTableMissingError('leaves', error)) {
+        console.error('[API] Error saving leave:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Exception saving leave:', e);
+  }
+  return req;
+}
+
+export async function fetchAdjustments(): Promise<any[]> {
+  if (!supabaseClient) return [];
+  try {
+    const { data, error } = await supabaseClient.from('adjustments').select('*');
+    if (!error && data) {
+      return data.map(a => ({
+        id: a.id,
+        employeeId: a.employee_id,
+        employeeName: a.employee_name,
+        type: a.type,
+        amount: Number(a.amount),
+        date: a.date,
+        description: a.description,
+        status: a.status
+      }));
+    }
+    if (error) {
+      if (!handleTableMissingError('adjustments', error)) {
+        console.error('[API] Error loading adjustments:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Error fetching adjustments:', e);
+  }
+  return [];
+}
+
+export async function saveAdjustment(adj: any): Promise<any> {
+  if (!supabaseClient) return adj;
+  try {
+    const payload = {
+      id: adj.id,
+      employee_id: adj.employeeId,
+      employee_name: adj.employeeName,
+      type: adj.type,
+      amount: adj.amount,
+      date: adj.date,
+      description: adj.description,
+      status: adj.status,
+      company_id: 'TG'
+    };
+    const { error } = await supabaseClient.from('adjustments').upsert(payload);
+    if (error) {
+      if (!handleTableMissingError('adjustments', error)) {
+        console.error('[API] Error saving adjustment:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Exception saving adjustment:', e);
+  }
+  return adj;
+}
+
+export async function fetchPayslips(): Promise<any[]> {
+  if (!supabaseClient) return [];
+  try {
+    const { data, error } = await supabaseClient.from('payslips').select('*');
+    if (!error && data) {
+      return data.map(p => ({
+        id: p.id,
+        employeeId: p.employee_id,
+        employeeName: p.employee_name,
+        employeePosition: p.employee_position,
+        period: p.period,
+        basicSalary: Number(p.basic_salary),
+        totalPrimes: Number(p.total_primes),
+        totalAvances: Number(p.total_avances),
+        socialDeductions: Number(p.social_deductions),
+        taxDeductions: Number(p.tax_deductions),
+        netSalary: Number(p.net_salary),
+        paymentStatus: p.payment_status,
+        paymentDate: p.payment_date,
+        presencesCount: p.presences_count,
+        absencesCount: p.absences_count,
+        loansDeduction: Number(p.loans_deduction || 0),
+        customPrimes: Number(p.custom_primes || 0),
+        customWithdrawals: Number(p.custom_withdrawals || 0)
+      }));
+    }
+    if (error) {
+      if (!handleTableMissingError('payslips', error)) {
+        console.error('[API] Error loading payslips:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Error fetching payslips:', e);
+  }
+  return [];
+}
+
+export async function savePayslip(pay: any): Promise<any> {
+  if (!supabaseClient) return pay;
+  try {
+    const payload = {
+      id: pay.id,
+      employee_id: pay.employeeId,
+      employee_name: pay.employeeName,
+      employee_position: pay.employeePosition,
+      period: pay.period,
+      basic_salary: pay.basicSalary,
+      total_primes: pay.totalPrimes,
+      total_avances: pay.totalAvances,
+      social_deductions: pay.socialDeductions,
+      tax_deductions: pay.taxDeductions,
+      net_salary: pay.netSalary,
+      payment_status: pay.paymentStatus,
+      payment_date: pay.paymentDate,
+      presences_count: pay.presencesCount,
+      absences_count: pay.absencesCount,
+      loans_deduction: pay.loansDeduction,
+      custom_primes: pay.customPrimes,
+      custom_withdrawals: pay.customWithdrawals,
+      company_id: 'TG'
+    };
+    const { error } = await supabaseClient.from('payslips').upsert(payload);
+    if (error) {
+      if (!handleTableMissingError('payslips', error)) {
+        console.error('[API] Error saving payslip:', error);
+      }
+    }
+  } catch (e) {
+    console.error('[API] Exception saving payslip:', e);
+  }
+  return pay;
 }
 
 export async function fetchCustomers(): Promise<any[]> {

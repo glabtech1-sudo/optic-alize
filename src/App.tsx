@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-// @ts-ignore
-import defaultLogo from './assets/images/optic_alize_logo_1781336757710.jpg';
+import { defaultLogoBase64 } from './assets/logoBase64';
 import { initialArchFiles } from './data/architectureFiles';
 import { extraArchFiles } from './data/extraArchitectureFiles';
 import { ArchFile } from './types/architecture';
@@ -174,9 +173,13 @@ export default function App() {
     () => localStorage.getItem('optic_company_phone') || '+228 90 00 00 00'
   );
 
-  const [appLogo, setAppLogo] = useState(
-    () => localStorage.getItem('optic_app_logo') || defaultLogo
-  );
+  const [appLogo, setAppLogo] = useState<string>(() => {
+    const saved = localStorage.getItem('optic_app_logo');
+    if (!saved || saved.includes('optic_alize_logo') || saved.startsWith('/') || saved.startsWith('.') || saved.startsWith('assets/')) {
+      return defaultLogoBase64;
+    }
+    return saved;
+  });
 
   useEffect(() => {
     localStorage.setItem('optic_theme_accent', selectedThemeAccent);

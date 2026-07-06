@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { fetchCustomers, saveCustomer } from '../lib/api';
-// @ts-ignore
-import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
+import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   User, Search, FileText, Download, Check, Sparkles, Shield, Calendar, Plus, 
   Filter, Ban, Table, CreditCard, HeartPulse, ShieldAlert, Award, ArrowUpRight, 

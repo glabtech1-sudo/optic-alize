@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-// @ts-ignore
-import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
+import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   Building2, 
   Wallet, 

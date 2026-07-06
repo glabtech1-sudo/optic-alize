@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-// @ts-ignore
-import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
+import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   CreditCard, Search, Percent, ShieldCheck, QrCode, Ticket, Check, Sparkles, 
   Printer, Coins, Landmark, PhoneCall, Gift, ShoppingBag, Plus, Minus, Trash2, 

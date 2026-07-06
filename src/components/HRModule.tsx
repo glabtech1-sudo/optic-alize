@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-// @ts-ignore
-import defaultLogo from '../assets/images/optic_alize_logo_1781336757710.jpg';
+import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   Users, 
   Clock, 
@@ -36,6 +35,19 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ArchFile } from '../types/architecture';
+import { 
+  fetchHREmployees, 
+  saveHREmployee, 
+  deleteHREmployee, 
+  fetchAttendanceLedger, 
+  saveAttendanceEntry, 
+  fetchLeaveRequests, 
+  saveLeaveRequest, 
+  fetchAdjustments, 
+  saveAdjustment, 
+  fetchPayslips, 
+  savePayslip 
+} from '../lib/api';
 
 // TypeScript local domain interfaces
 interface Employee {
@@ -257,6 +269,8 @@ export default function HRModule({
     }
   }, [localEmployees, hrEmployees]);
 
+
+
   React.useEffect(() => {
     const syncAttendance = () => {
       if (localStorage.getItem('optic_system_factory_reset') === 'true') {
@@ -384,6 +398,84 @@ export default function HRModule({
 
   useEffect(() => {
     localStorage.setItem('optic_payslips', JSON.stringify(payslips));
+  }, [payslips]);
+
+  // RELATIONAL SUPABASE SYNC HOOKS & DATABASE LOADER
+  const [isLoadingDb, setIsLoadingDb] = useState(false);
+
+  const loadDataFromDb = async () => {
+    setIsLoadingDb(true);
+    try {
+      const dbEmps = await fetchHREmployees();
+      if (dbEmps && dbEmps.length > 0) {
+        setEmployees(dbEmps);
+      }
+      const dbAtt = await fetchAttendanceLedger();
+      if (dbAtt && dbAtt.length > 0) {
+        setAttendance(dbAtt);
+      }
+      const dbLeaves = await fetchLeaveRequests();
+      if (dbLeaves && dbLeaves.length > 0) {
+        setLeaves(dbLeaves);
+      }
+      const dbAdj = await fetchAdjustments();
+      if (dbAdj && dbAdj.length > 0) {
+        setAdjustments(dbAdj);
+      }
+      const dbPays = await fetchPayslips();
+      if (dbPays && dbPays.length > 0) {
+        setPayslips(dbPays);
+      }
+    } catch (e) {
+      console.warn('[HRModule] Direct Supabase fetch failed, using local caching:', e);
+    } finally {
+      setIsLoadingDb(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadDataFromDb();
+  }, []);
+
+  // Auto-sync updates to Supabase
+  React.useEffect(() => {
+    if (employees && employees.length > 0) {
+      employees.forEach(emp => {
+        saveHREmployee(emp).catch(err => console.warn('[SYNC] Error syncing employee:', err));
+      });
+    }
+  }, [employees]);
+
+  React.useEffect(() => {
+    if (attendance && attendance.length > 0) {
+      attendance.forEach(entry => {
+        saveAttendanceEntry(entry).catch(err => console.warn('[SYNC] Error syncing attendance:', err));
+      });
+    }
+  }, [attendance]);
+
+  React.useEffect(() => {
+    if (leaves && leaves.length > 0) {
+      leaves.forEach(req => {
+        saveLeaveRequest(req).catch(err => console.warn('[SYNC] Error syncing leave request:', err));
+      });
+    }
+  }, [leaves]);
+
+  React.useEffect(() => {
+    if (adjustments && adjustments.length > 0) {
+      adjustments.forEach(adj => {
+        saveAdjustment(adj).catch(err => console.warn('[SYNC] Error syncing adjustment:', err));
+      });
+    }
+  }, [adjustments]);
+
+  React.useEffect(() => {
+    if (payslips && payslips.length > 0) {
+      payslips.forEach(pay => {
+        savePayslip(pay).catch(err => console.warn('[SYNC] Error syncing payslip:', err));
+      });
+    }
   }, [payslips]);
 
   // If payslips are empty but we have employees, let's pre-populate standard slips

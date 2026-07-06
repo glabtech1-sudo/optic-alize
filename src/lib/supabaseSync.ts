@@ -14,6 +14,8 @@ const envAnonKey = (typeof process !== 'undefined' && process.env?.SUPABASE_ANON
       : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZnY2FyZmZscWpmYnJldmZubHlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MzU3MjIsImV4cCI6MjA5ODQxMTcyMn0.zc2yUKz7_6h-6_Mxw9MmMTatZ1lb1PwUvjGiai8Q2DU');
 
 export let supabaseClient: SupabaseClient | null = null;
+export let isSyncTableAvailable = true;
+export let hasWarnedSyncTableMissing = false;
 
 if (envUrl && envAnonKey) {
   try {
@@ -36,35 +38,62 @@ export function isSupabaseConfigured(): boolean {
 }
 
 /**
+ * Unpacks the data stored in Supabase's JSONB column.
+ * Supporting both the wrapped object format { value: ... } and direct values for backward compatibility.
+ */
+export function unpackData(dbData: any): any {
+  if (dbData && typeof dbData === 'object' && dbData !== null && 'value' in dbData) {
+    return dbData.value;
+  }
+  return dbData;
+}
+
+/**
  * Syncs a local state collection to Supabase cloud.
  * Upserts a row into the 'opticalize_sync' table.
  */
 export async function syncCollectionToSupabase(key: string, data: any): Promise<boolean> {
-  if (!supabaseClient) return false;
+  if (!supabaseClient || !isSyncTableAvailable) return false;
 
   try {
-    // We filter the data to make sure we don't save garbage
-    const cleanData = typeof data === 'string' ? JSON.parse(data) : data;
+    // Safely parse JSON strings, otherwise treat as raw text
+    let cleanData = data;
+    if (typeof data === 'string') {
+      try {
+        cleanData = JSON.parse(data);
+      } catch (e) {
+        // Not valid JSON, keep as raw string (e.g. base64 images or names)
+        cleanData = data;
+      }
+    }
 
     const { error } = await supabaseClient
       .from('opticalize_sync')
       .upsert({
         collection_name: key,
-        data: cleanData,
+        data: { value: cleanData },
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'collection_name'
       });
 
     if (error) {
-      console.error(`[SUPABASE SYNC] Error syncing collection ${key}:`, error);
+      if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        isSyncTableAvailable = false;
+        if (!hasWarnedSyncTableMissing) {
+          hasWarnedSyncTableMissing = true;
+          console.warn('[SUPABASE SYNC] Table "opticalize_sync" does not exist yet. Real-time fallback sync smoothly uses local storage. To activate real-time database sync, please run the supabase_migration.sql script.');
+        }
+      } else {
+        console.error(`[SUPABASE SYNC] Error syncing collection ${key}:`, JSON.stringify(error) || error);
+      }
       return false;
     }
 
     console.log(`[SUPABASE SYNC] Successfully synced "${key}" to Supabase.`);
     return true;
-  } catch (err) {
-    console.error(`[SUPABASE SYNC] Exception during sync for "${key}":`, err);
+  } catch (err: any) {
+    console.error(`[SUPABASE SYNC] Exception during sync for "${key}":`, err?.message || err);
     return false;
   }
 }
@@ -73,7 +102,7 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
  * Loads a synchronized collection from Supabase.
  */
 export async function loadCollectionFromSupabase(key: string): Promise<any | null> {
-  if (!supabaseClient) return null;
+  if (!supabaseClient || !isSyncTableAvailable) return null;
 
   try {
     const { data, error } = await supabaseClient
@@ -83,13 +112,21 @@ export async function loadCollectionFromSupabase(key: string): Promise<any | nul
       .maybeSingle();
 
     if (error) {
-      console.error(`[SUPABASE LOAD] Error loading collection ${key}:`, error);
+      if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        isSyncTableAvailable = false;
+        if (!hasWarnedSyncTableMissing) {
+          hasWarnedSyncTableMissing = true;
+          console.warn('[SUPABASE LOAD] Table "opticalize_sync" does not exist yet. Using local storage instead.');
+        }
+      } else {
+        console.error(`[SUPABASE LOAD] Error loading collection ${key}:`, error);
+      }
       return null;
     }
 
     if (data && data.data) {
       console.log(`[SUPABASE LOAD] Retrieved "${key}" from Supabase.`);
-      return data.data;
+      return unpackData(data.data);
     }
 
     return null;
@@ -149,7 +186,7 @@ export function initializeAutomaticSupabaseSync() {
  * Fetches all synced collections from Supabase and populates localStorage on startup.
  */
 export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
-  if (!supabaseClient) return false;
+  if (!supabaseClient || !isSyncTableAvailable) return false;
 
   console.log('[SUPABASE PULL] Fetching latest database state from cloud...');
   try {
@@ -158,7 +195,15 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
       .select('collection_name, data');
 
     if (error) {
-      console.error('[SUPABASE PULL] Failed to pull synced states:', error);
+      if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        isSyncTableAvailable = false;
+        if (!hasWarnedSyncTableMissing) {
+          hasWarnedSyncTableMissing = true;
+          console.warn('[SUPABASE PULL] Table "opticalize_sync" does not exist in your Supabase database. Real-time fallback sync smoothly uses local storage. To activate, execute public.opticalize_sync table migration.');
+        }
+      } else {
+        console.error('[SUPABASE PULL] Failed to pull synced states:', JSON.stringify(error) || error);
+      }
       return false;
     }
 
@@ -166,7 +211,8 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
       let updatedAny = false;
       data.forEach((row: any) => {
         if (SYNCABLE_KEYS.includes(row.collection_name)) {
-          const stringified = typeof row.data === 'string' ? row.data : JSON.stringify(row.data);
+          const unpacked = unpackData(row.data);
+          const stringified = typeof unpacked === 'string' ? unpacked : JSON.stringify(unpacked);
           const currentVal = localStorage.getItem(row.collection_name);
           if (currentVal !== stringified) {
             localStorage.setItem(row.collection_name, stringified);
@@ -194,7 +240,7 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
  * Pushes all currently stored local storage collections to Supabase to seed the cloud.
  */
 export async function pushAllCollectionsToSupabase(): Promise<boolean> {
-  if (!supabaseClient) return false;
+  if (!supabaseClient || !isSyncTableAvailable) return false;
 
   console.log('[SUPABASE PUSH] Seeding local database state to cloud...');
   let successCount = 0;

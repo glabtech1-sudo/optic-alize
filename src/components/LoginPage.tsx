@@ -159,7 +159,7 @@ export default function LoginPage({
         </div>
 
         {/* Beautiful Light-themed Login Card */}
-        <div className="bg-white py-8 px-6 sm:px-10 border border-slate-200 rounded-3xl shadow-xl relative space-y-6">
+        <div className="bg-white py-8 px-6 sm:px-10 border border-slate-200 rounded-3xl shadow-xl relative space-y-6 overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-blue-600 via-emerald-500 to-blue-400 rounded-t-3xl" />
           
           {error && (

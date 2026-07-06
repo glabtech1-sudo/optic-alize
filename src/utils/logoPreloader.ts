@@ -3,11 +3,18 @@
  * Preloads the application logo and outputs solid and low-opacity watermark base64 strings in localStorage.
  */
 
+import { defaultLogoBase64 } from '../assets/logoBase64';
+
 export function preloadLogoAndWatermark(logoUrl: string) {
   if (typeof window === 'undefined') return;
 
+  let resolvedUrl = logoUrl;
+  if (!resolvedUrl || resolvedUrl.includes('optic_alize_logo') || resolvedUrl.startsWith('/') || resolvedUrl.startsWith('.') || resolvedUrl.startsWith('assets/')) {
+    resolvedUrl = defaultLogoBase64;
+  }
+
   const img = new Image();
-  if (logoUrl && logoUrl.startsWith('http')) {
+  if (resolvedUrl && resolvedUrl.startsWith('http')) {
     img.crossOrigin = 'anonymous';
   }
   
@@ -70,7 +77,7 @@ export function preloadLogoAndWatermark(logoUrl: string) {
     }
   };
 
-  img.src = logoUrl;
+  img.src = resolvedUrl;
 }
 
 function drawDefaultVectorLogo(ctx: CanvasRenderingContext2D, opacity: number) {
