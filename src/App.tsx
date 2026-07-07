@@ -22,6 +22,7 @@ import JournalModule from './components/JournalModule';
 import GestionOpticModule from './components/GestionOpticModule';
 import SuperAdminHQModule from './components/SuperAdminHQModule';
 import SuperAdminMonitor from './components/SuperAdminMonitor';
+import SupabaseSyncWidget from './components/SupabaseSyncWidget';
 
 // Import original modular sub-systems for fallback and reference
 import CRMModule from './components/CRMModule';
@@ -1096,6 +1097,9 @@ export default function App() {
               />
             )}
           </AnimatePresence>
+
+          {/* Real-time Supabase direct sync status indicator */}
+          <SupabaseSyncWidget />
     </div>
   );
 }

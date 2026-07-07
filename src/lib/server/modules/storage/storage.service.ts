@@ -46,10 +46,11 @@ class StorageService {
         .from('opticalize_sync')
         .upsert({
           collection_name: 'optic_uploaded_files',
+          boutique_name: 'Global',
           data: db,
           updated_at: new Date().toISOString()
         }, {
-          onConflict: 'collection_name'
+          onConflict: 'collection_name,boutique_name'
         });
     } catch (e) {
       console.error('[STORAGE SERVICE] Error saving files metadata:', e);

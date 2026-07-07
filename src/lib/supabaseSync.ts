@@ -40,7 +40,6 @@ export function isSupabaseConfigured(): boolean {
 
 /**
  * Unpacks the data stored in Supabase's JSONB column.
- * Supporting both the wrapped object format { value: ... } and direct values for backward compatibility.
  */
 export function unpackData(dbData: any): any {
   if (dbData && typeof dbData === 'object' && dbData !== null && 'value' in dbData) {
@@ -49,156 +48,64 @@ export function unpackData(dbData: any): any {
   return dbData;
 }
 
-/**
- * Syncs a local state collection to Supabase cloud.
- * Upserts rows into dedicated tables or falls back to 'opticalize_sync'.
- */
-export async function syncCollectionToSupabase(key: string, data: any): Promise<boolean> {
-  if (!supabaseClient) return false;
+// -------------------------------------------------------------
+// IN-MEMORY METIER STORAGE & REAL-TIME RECONCILIATION ENGINE
+// -------------------------------------------------------------
 
-  try {
-    // Safely parse JSON strings, otherwise treat as raw text
-    let cleanData = data;
-    if (typeof data === 'string') {
-      try {
-        cleanData = JSON.parse(data);
-      } catch (e) {
-        cleanData = data;
-      }
-    }
+export const globalMemoryStore: Record<string, string> = {};
 
-    const tableName = MAPPED_KEYS[key];
-    const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
-    let syncSuccess = false;
+export interface SyncState {
+  loading: boolean;
+  status: 'idle' | 'loading' | 'synced' | 'saving' | 'error';
+  error: string | null;
+  lastSyncedAt: string | null;
+}
 
-    if (tableName && !missingTables[tableName]) {
-      try {
-        // Upsert into dedicated business data table
-        const items = Array.isArray(cleanData) ? cleanData : [cleanData];
-        let hasError = false;
+export let globalSyncState: SyncState = {
+  loading: true,
+  status: 'loading',
+  error: null,
+  lastSyncedAt: null
+};
 
-        for (const item of items) {
-          if (!item || typeof item !== 'object') continue;
-          const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
-          
-          const payload = {
-            id: String(itemId),
-            boutique_name: boutiqueName,
-            data: { value: item },
-            updated_at: new Date().toISOString()
-          };
+const syncStateCallbacks = new Set<(state: SyncState) => void>();
 
-          const { error: upsertErr } = await supabaseClient
-            .from(tableName)
-            .upsert(payload, { onConflict: 'id' });
+export function subscribeToSyncState(callback: (state: SyncState) => void) {
+  syncStateCallbacks.add(callback);
+  callback(globalSyncState);
+  return () => {
+    syncStateCallbacks.delete(callback);
+  };
+}
 
-          if (upsertErr) {
-            console.warn(`[SUPABASE SYNC WARNING] Table ${tableName} upsert failed, flagging table:`, upsertErr);
-            if (upsertErr.code === '42P01' || upsertErr.message?.includes('does not exist')) {
-              missingTables[tableName] = true;
-            }
-            hasError = true;
-            break;
-          }
-        }
-        if (!hasError) {
-          syncSuccess = true;
-        }
-      } catch (tableNameErr) {
-        console.warn(`[SUPABASE SYNC] Table ${tableName} is not accessible, falling back.`, tableNameErr);
-        missingTables[tableName] = true;
-      }
-    }
-
-    // Fallback to central opticalize_sync table if dedicated table failed/missing
-    if (!syncSuccess && isSyncTableAvailable) {
-      const { error } = await supabaseClient
-        .from('opticalize_sync')
-        .upsert({
-          collection_name: key,
-          boutique_name: boutiqueName,
-          data: { value: cleanData },
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'collection_name,boutique_name'
-        });
-
-      if (!error) {
-        syncSuccess = true;
-        console.log(`[SUPABASE SYNC] Successfully synced "${key}" to fallback opticalize_sync.`);
-      } else {
-        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
-          isSyncTableAvailable = false;
-        } else {
-          console.error(`[SUPABASE SYNC] Error syncing collection ${key} to fallback:`, error);
-        }
-      }
-    }
-
-    return syncSuccess;
-  } catch (err: any) {
-    console.error(`[SUPABASE SYNC] Exception during sync for "${key}":`, err?.message || err);
-    return false;
-  }
+export function updateSyncState(newState: Partial<SyncState>) {
+  globalSyncState = { ...globalSyncState, ...newState };
+  syncStateCallbacks.forEach(cb => cb(globalSyncState));
 }
 
 /**
- * Loads a synchronized collection from Supabase.
+ * Detector for business/operational keys that must never live in browser storage.
  */
-export async function loadCollectionFromSupabase(key: string): Promise<any | null> {
-  if (!supabaseClient) return null;
-
-  const tableName = MAPPED_KEYS[key];
-  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
-
-  try {
-    if (tableName && !missingTables[tableName]) {
-      try {
-        const { data, error } = await supabaseClient
-          .from(tableName)
-          .select('data')
-          .eq('boutique_name', boutiqueName);
-
-        if (!error && data) {
-          return data.map(row => unpackData(row.data));
-        } else if (error) {
-          console.warn(`[SUPABASE LOAD] Mapped table ${tableName} load failed, flagging table:`, error);
-          if (error.code === '42P01' || error.message?.includes('does not exist')) {
-            missingTables[tableName] = true;
-          }
-        }
-      } catch (tableNameErr) {
-        missingTables[tableName] = true;
-      }
-    }
-
-    // Try central table opticalize_sync fallback
-    if (isSyncTableAvailable) {
-      const { data, error } = await supabaseClient
-        .from('opticalize_sync')
-        .select('data')
-        .eq('collection_name', key)
-        .eq('boutique_name', boutiqueName)
-        .maybeSingle();
-
-      if (!error && data && data.data) {
-        console.log(`[SUPABASE LOAD] Retrieved "${key}" from fallback opticalize_sync.`);
-        return unpackData(data.data);
-      } else if (error) {
-        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
-          isSyncTableAvailable = false;
-        } else {
-          console.error(`[SUPABASE LOAD] Error loading fallback collection ${key}:`, error);
-        }
-      }
-    }
-  } catch (err) {
-    console.error(`[SUPABASE LOAD] Exception during loading for "${key}":`, err);
-  }
-
-  return null;
+export function isBusinessKey(key: string): boolean {
+  if (!key.startsWith('optic_') && !key.startsWith('pending_optic_')) return false;
+  const excludedKeys = [
+    'optic_access_token',
+    'optic_refresh_token',
+    'optic_user_profile',
+    'optic_app_language',
+    'optic_theme_accent',
+    'optic_boutique_name',
+    'optic_active_presence_boutique',
+    'optic_company_email',
+    'optic_company_phone',
+    'optic_is_authenticated',
+    'optic_user_email',
+    'optic_system_factory_reset'
+  ];
+  return !excludedKeys.includes(key);
 }
 
+// Global collections list to synchronize
 export const SYNCABLE_KEYS = [
   'optic_users',
   'optic_hr_employees',
@@ -234,7 +141,14 @@ export const SYNCABLE_KEYS = [
   'optic_push_logs',
   'optic_accounting_boutique_balances',
   'optic_pos_products',
-  'optic_credited_loyalty_orders'
+  'optic_credited_loyalty_orders',
+  'optic_my_commandes',
+  'optic_vouchers_list',
+  'optic_backups_list',
+  'optic_hq_zones',
+  'optic_hq_pending_orders',
+  'optic_hq_branch_modules',
+  'pending_optic_pos_order'
 ];
 
 export const MAPPED_KEYS: Record<string, string> = {
@@ -249,40 +163,245 @@ export const MAPPED_KEYS: Record<string, string> = {
   'optic_hq_branches': 'hq_branches'
 };
 
+// Override Storage Prototype globally to trap business data operations
+if (typeof window !== 'undefined') {
+  const originalGetItem = Storage.prototype.getItem;
+  const originalSetItem = Storage.prototype.setItem;
+  const originalRemoveItem = Storage.prototype.removeItem;
+
+  Storage.prototype.getItem = function (key: string): string | null {
+    if (isBusinessKey(key)) {
+      return globalMemoryStore[key] !== undefined ? globalMemoryStore[key] : null;
+    }
+    return originalGetItem.apply(this, [key]);
+  };
+
+  Storage.prototype.setItem = function (key: string, value: string) {
+    if (isBusinessKey(key)) {
+      globalMemoryStore[key] = value;
+      updateSyncState({ status: 'saving' });
+      
+      syncCollectionToSupabase(key, value)
+        .then(success => {
+          if (success) {
+            updateSyncState({
+              status: 'synced',
+              error: null,
+              lastSyncedAt: new Date().toLocaleTimeString()
+            });
+          } else {
+            updateSyncState({
+              status: 'error',
+              error: `Échec d'enregistrement pour : ${key}`
+            });
+          }
+        })
+        .catch(err => {
+          updateSyncState({
+            status: 'error',
+            error: err.message || `Erreur de connexion lors de la sauvegarde de ${key}`
+          });
+        });
+
+      window.dispatchEvent(new Event('storage'));
+      return;
+    }
+    originalSetItem.apply(this, [key, value]);
+  };
+
+  Storage.prototype.removeItem = function (key: string) {
+    if (isBusinessKey(key)) {
+      delete globalMemoryStore[key];
+      updateSyncState({ status: 'saving' });
+      syncCollectionToSupabase(key, '[]')
+        .then(() => {
+          updateSyncState({
+            status: 'synced',
+            error: null,
+            lastSyncedAt: new Date().toLocaleTimeString()
+          });
+        })
+        .catch(() => {});
+      window.dispatchEvent(new Event('storage'));
+      return;
+    }
+    originalRemoveItem.apply(this, [key]);
+  };
+}
 
 /**
- * Initializes automatic synchronization of local storage changes to Supabase.
- * Monkey-patches localStorage.setItem to auto-upload changes in real-time.
+ * Syncs a collection directly to Supabase cloud.
+ */
+export async function syncCollectionToSupabase(key: string, data: any): Promise<boolean> {
+  if (!supabaseClient) return false;
+
+  try {
+    let cleanData = data;
+    if (typeof data === 'string') {
+      try {
+        cleanData = JSON.parse(data);
+      } catch (e) {
+        cleanData = data;
+      }
+    }
+
+    const tableName = MAPPED_KEYS[key];
+    const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+    let syncSuccess = false;
+
+    if (tableName && !missingTables[tableName]) {
+      try {
+        const items = Array.isArray(cleanData) ? cleanData : [cleanData];
+        let hasError = false;
+
+        for (const item of items) {
+          if (!item || typeof item !== 'object') continue;
+          const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
+          
+          const payload = {
+            id: String(itemId),
+            boutique_name: boutiqueName,
+            data: { value: item },
+            updated_at: new Date().toISOString()
+          };
+
+          const { error: upsertErr } = await supabaseClient
+            .from(tableName)
+            .upsert(payload, { onConflict: 'id' });
+
+          if (upsertErr) {
+            console.warn(`[SUPABASE SYNC WARNING] Table ${tableName} upsert failed:`, upsertErr);
+            if (upsertErr.code === '42P01' || upsertErr.message?.includes('does not exist')) {
+              missingTables[tableName] = true;
+            }
+            hasError = true;
+            break;
+          }
+        }
+        if (!hasError) {
+          syncSuccess = true;
+        }
+      } catch (tableNameErr) {
+        console.warn(`[SUPABASE SYNC] Table ${tableName} not accessible, falling back.`, tableNameErr);
+        missingTables[tableName] = true;
+      }
+    }
+
+    // Fallback to central opticalize_sync table
+    if (!syncSuccess && isSyncTableAvailable) {
+      const { error } = await supabaseClient
+        .from('opticalize_sync')
+        .upsert({
+          collection_name: key,
+          boutique_name: boutiqueName,
+          data: { value: cleanData },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'collection_name,boutique_name'
+        });
+
+      if (!error) {
+        syncSuccess = true;
+      } else {
+        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist')) {
+          isSyncTableAvailable = false;
+        } else {
+          console.error(`[SUPABASE SYNC] Fallback syncing error for ${key}:`, error);
+        }
+      }
+    }
+
+    return syncSuccess;
+  } catch (err: any) {
+    console.error(`[SUPABASE SYNC] Exception during sync for "${key}":`, err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * Loads a synchronized collection from Supabase.
+ */
+export async function loadCollectionFromSupabase(key: string): Promise<any | null> {
+  if (!supabaseClient) return null;
+
+  const tableName = MAPPED_KEYS[key];
+  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+
+  try {
+    if (tableName && !missingTables[tableName]) {
+      try {
+        const { data, error } = await supabaseClient
+          .from(tableName)
+          .select('data')
+          .eq('boutique_name', boutiqueName);
+
+        if (!error && data) {
+          return data.map(row => unpackData(row.data));
+        } else if (error) {
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            missingTables[tableName] = true;
+          }
+        }
+      } catch (tableNameErr) {
+        missingTables[tableName] = true;
+      }
+    }
+
+    if (isSyncTableAvailable) {
+      const { data, error } = await supabaseClient
+        .from('opticalize_sync')
+        .select('data')
+        .eq('collection_name', key)
+        .eq('boutique_name', boutiqueName)
+        .maybeSingle();
+
+      if (!error && data && data.data) {
+        return unpackData(data.data);
+      } else if (error) {
+        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist')) {
+          isSyncTableAvailable = false;
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[SUPABASE LOAD] Exception for "${key}":`, err);
+  }
+
+  return null;
+}
+
+/**
+ * Initializes automatic synchronization of local storage changes.
  */
 export function initializeAutomaticSupabaseSync() {
   if (!supabaseClient) {
     console.log('[SUPABASE AUTO-SYNC] Skipped. Credentials missing.');
     return;
   }
-
-  // Intercept setItem
-  const originalSetItem = localStorage.setItem;
-  localStorage.setItem = function (key: string, value: string) {
-    originalSetItem.apply(this, [key, value]);
-
-    if (SYNCABLE_KEYS.includes(key)) {
-      // Run sync asynchronously in the background
-      syncCollectionToSupabase(key, value).catch(err => {
-        console.warn(`[SUPABASE AUTO-SYNC] Failed to sync ${key}:`, err);
-      });
+  // Remove any business keys stored physically in localStorage to comply with instructions
+  if (typeof window !== 'undefined') {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && isBusinessKey(key)) {
+        localStorage.removeItem(key);
+      }
     }
-  };
-
-  console.log('[SUPABASE AUTO-SYNC] Real-time browser local storage synchronizer initialized successfully.');
+  }
+  console.log('[SUPABASE AUTO-SYNC] Cleaned physical local storage from all business operational data.');
 }
 
 /**
- * Fetches all synced collections from Supabase and populates localStorage on startup.
+ * Fetches all synced collections from Supabase and populates global memory store on startup.
  */
 export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
-  if (!supabaseClient) return false;
+  if (!supabaseClient) {
+    updateSyncState({ loading: false, status: 'error', error: 'Client Supabase indisponible.' });
+    return false;
+  }
 
-  console.log('[SUPABASE PULL] Fetching latest database state from cloud...');
+  updateSyncState({ loading: true, status: 'loading', error: null });
+  console.log('[SUPABASE PULL] Synchronizing all operational modules directly from Supabase...');
+  
   try {
     const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
     let updatedAny = false;
@@ -298,19 +417,16 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
         if (!error && data) {
           const unpackedItems = data.map(row => unpackData(row.data));
           const stringified = JSON.stringify(unpackedItems);
-          const currentVal = localStorage.getItem(key);
-          if (currentVal !== stringified) {
-            localStorage.setItem(key, stringified);
+          if (globalMemoryStore[key] !== stringified) {
+            globalMemoryStore[key] = stringified;
             updatedAny = true;
           }
         } else if (error) {
-          console.warn(`[SUPABASE PULL WARNING] Table ${tableName} load failed, flagging table:`, error);
           if (error.code === '42P01' || error.message?.includes('does not exist')) {
             missingTables[tableName] = true;
           }
         }
       } catch (err) {
-        console.error(`[SUPABASE PULL] Failed to pull dedicated table ${tableName}:`, err);
         missingTables[tableName] = true;
       }
     }
@@ -330,44 +446,52 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
           if (SYNCABLE_KEYS.includes(row.collection_name) && (!isMapped || isMappedTableMissing)) {
             const unpacked = unpackData(row.data);
             const stringified = typeof unpacked === 'string' ? unpacked : JSON.stringify(unpacked);
-            const currentVal = localStorage.getItem(row.collection_name);
-            if (currentVal !== stringified) {
-              localStorage.setItem(row.collection_name, stringified);
+            if (globalMemoryStore[row.collection_name] !== stringified) {
+              globalMemoryStore[row.collection_name] = stringified;
               updatedAny = true;
             }
           }
         });
       } else if (error) {
-        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist')) {
           isSyncTableAvailable = false;
-        } else {
-          console.error('[SUPABASE PULL] Failed to pull synced states:', error);
         }
       }
     }
 
+    updateSyncState({
+      loading: false,
+      status: 'synced',
+      error: null,
+      lastSyncedAt: new Date().toLocaleTimeString()
+    });
+
     if (updatedAny) {
-      console.log('[SUPABASE PULL] Local state updated from cloud. Triggering component refreshes.');
       window.dispatchEvent(new Event('storage'));
     }
     return true;
-  } catch (err) {
-    console.error('[SUPABASE PULL] Exception during full database pull:', err);
+  } catch (err: any) {
+    console.error('[SUPABASE PULL] Exception during pull:', err);
+    updateSyncState({
+      loading: false,
+      status: 'error',
+      error: err.message || 'Erreur lors de la récupération des données.'
+    });
     return false;
   }
 }
 
 /**
- * Pushes all currently stored local storage collections to Supabase to seed the cloud.
+ * Pushes all currently stored global memory collections to Supabase.
  */
 export async function pushAllCollectionsToSupabase(): Promise<boolean> {
-  if (!supabaseClient || !isSyncTableAvailable) return false;
+  if (!supabaseClient) return false;
 
-  console.log('[SUPABASE PUSH] Seeding local database state to cloud...');
+  console.log('[SUPABASE PUSH] Seeding global memory database state to cloud...');
   let successCount = 0;
   for (const key of SYNCABLE_KEYS) {
-    const value = localStorage.getItem(key);
-    if (value !== null) {
+    const value = globalMemoryStore[key];
+    if (value !== undefined) {
       const ok = await syncCollectionToSupabase(key, value);
       if (ok) successCount++;
     }
@@ -377,9 +501,29 @@ export async function pushAllCollectionsToSupabase(): Promise<boolean> {
 }
 
 /**
- * Helper to setup SQL schema in Supabase.
- * Returns the SQL instructions.
+ * Set up real-time subscription for PostgreSQL database changes to support instant synchronization.
  */
+export function subscribeToSupabaseRealtime() {
+  if (!supabaseClient) return null;
+
+  const channel = supabaseClient
+    .channel('public_realtime_all_changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public' },
+      (payload) => {
+        console.log('[SUPABASE REALTIME] Live database updates detected:', payload);
+        // Silently pull updated collections to keep memory store completely aligned
+        pullAllCollectionsFromSupabase().catch(err => {
+          console.warn('[SUPABASE REALTIME PULL FAILED]', err);
+        });
+      }
+    )
+    .subscribe();
+
+  return channel;
+}
+
 export function getSupabaseSetupSQL(): string {
   return `
 -- SQL Schema to enable real-time cloud synchronization for Optic Alizé
@@ -388,15 +532,7 @@ CREATE TABLE IF NOT EXISTS public.opticalize_sync (
     data jsonb NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
-
--- Enable Row Level Security (RLS)
 ALTER TABLE public.opticalize_sync ENABLE ROW LEVEL SECURITY;
-
--- Create policy to allow public access for read & write
--- Note: Customize this policy based on your production security requirements
-CREATE POLICY "Allow public full access" ON public.opticalize_sync
-    FOR ALL
-    USING (true)
-    WITH CHECK (true);
+CREATE POLICY "Allow public full access" ON public.opticalize_sync FOR ALL USING (true) WITH CHECK (true);
   `;
 }

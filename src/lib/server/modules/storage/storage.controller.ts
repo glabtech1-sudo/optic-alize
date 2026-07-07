@@ -24,6 +24,7 @@ async function saveAuditLogSupabase(log: { companyId: string; userId: string; us
     const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     await supabaseClient.from('opticalize_sync').insert({
       collection_name: `audit_log_${logId}`,
+      boutique_name: log.companyId || 'Global',
       data: {
         id: logId,
         ...log,

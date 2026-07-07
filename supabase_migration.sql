@@ -399,3 +399,47 @@ CREATE TABLE IF NOT EXISTS public.hq_branches (
 ALTER TABLE public.hq_branches ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public full access on hq_branches" ON public.hq_branches FOR ALL USING (true) WITH CHECK (true);
 
+-- ==========================================
+-- 10. REALTIME CONFIGURATION (SUPABASE PUBLIC BROADCAST)
+-- ==========================================
+
+-- Enable Replica Identity Full to receive entire row state on updates/deletes
+ALTER TABLE public.users_profiles REPLICA IDENTITY FULL;
+ALTER TABLE public.employees REPLICA IDENTITY FULL;
+ALTER TABLE public.attendance REPLICA IDENTITY FULL;
+ALTER TABLE public.leaves REPLICA IDENTITY FULL;
+ALTER TABLE public.adjustments REPLICA IDENTITY FULL;
+ALTER TABLE public.payslips REPLICA IDENTITY FULL;
+ALTER TABLE public.opticalize_sync REPLICA IDENTITY FULL;
+ALTER TABLE public.crm_customers REPLICA IDENTITY FULL;
+ALTER TABLE public.fused_catalog REPLICA IDENTITY FULL;
+ALTER TABLE public.saas_orders REPLICA IDENTITY FULL;
+ALTER TABLE public.audit_logs REPLICA IDENTITY FULL;
+ALTER TABLE public.my_clinic_appointments REPLICA IDENTITY FULL;
+ALTER TABLE public.my_clinic_exams REPLICA IDENTITY FULL;
+ALTER TABLE public.my_prescriptions REPLICA IDENTITY FULL;
+ALTER TABLE public.hq_companies REPLICA IDENTITY FULL;
+ALTER TABLE public.hq_branches REPLICA IDENTITY FULL;
+
+-- Add tables to Supabase Realtime publication
+BEGIN;
+  DROP PUBLICATION IF EXISTS supabase_realtime;
+  CREATE PUBLICATION supabase_realtime FOR TABLE 
+    public.users_profiles,
+    public.employees,
+    public.attendance,
+    public.leaves,
+    public.adjustments,
+    public.payslips,
+    public.opticalize_sync,
+    public.crm_customers,
+    public.fused_catalog,
+    public.saas_orders,
+    public.audit_logs,
+    public.my_clinic_appointments,
+    public.my_clinic_exams,
+    public.my_prescriptions,
+    public.hq_companies,
+    public.hq_branches;
+COMMIT;
+

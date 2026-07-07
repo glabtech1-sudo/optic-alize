@@ -1,4 +1,4 @@
-import { supabaseClient, unpackData, missingTables } from './supabaseSync';
+import { supabaseClient, unpackData, missingTables, updateSyncState, globalMemoryStore, syncCollectionToSupabase } from './supabaseSync';
 
 export function getAccessToken(): string | null {
   return localStorage.getItem('optic_access_token');
@@ -61,19 +61,19 @@ function getTableNameForKey(key: string): string | null {
 // Global Supabase-backed JSON collections.
 // Reads and writes from dedicated PostgreSQL tables in Supabase with RLS policies, isolated by agency (boutique_name)
 async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Promise<T> {
-  const localVal = typeof window !== 'undefined' ? localStorage.getItem(fallbackKey) : null;
+  const localVal = globalMemoryStore[fallbackKey] || null;
   const parsedLocal = localVal ? JSON.parse(localVal) : null;
 
   if (!supabaseClient) {
-    console.warn('[SUPABASE] Client not configured. Returning local storage value for', fallbackKey);
     return (parsedLocal !== null ? parsedLocal : defaultVal) as T;
   }
 
   const tableName = getTableNameForKey(fallbackKey);
   const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
 
+  updateSyncState({ status: 'loading' });
+
   try {
-    // 1. Try to load from dedicated table first if it exists and hasn't been flagged as missing
     if (tableName && !missingTables[tableName]) {
       try {
         const { data, error } = await supabaseClient
@@ -83,9 +83,9 @@ async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Pro
 
         if (!error && data) {
           const items = data.map(row => unpackData(row.data));
+          updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
           return items as unknown as T;
         } else if (error) {
-          console.warn(`[SUPABASE FETCH] Table "${tableName}" load failed, flagging table and falling back:`, error);
           if (error.code === '42P01' || error.message?.includes('does not exist')) {
             missingTables[tableName] = true;
           }
@@ -95,7 +95,6 @@ async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Pro
       }
     }
 
-    // 2. Try to fallback to the core 'opticalize_sync' table
     try {
       const { data, error } = await supabaseClient
         .from('opticalize_sync')
@@ -105,21 +104,21 @@ async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Pro
         .maybeSingle();
       
       if (!error && data && data.data) {
+        updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
         return unpackData(data.data) as T;
       }
-    } catch (fallbackErr) {
-      console.warn(`[SUPABASE FETCH] Core fallback table sync also failed:`, fallbackErr);
-    }
-  } catch (err) {
+    } catch (fallbackErr) {}
+  } catch (err: any) {
     console.error(`[SUPABASE FETCH] Exception loading ${fallbackKey}:`, err);
+    updateSyncState({ status: 'error', error: `Erreur de chargement pour ${fallbackKey}: ${err.message || err}` });
   }
 
-  // 3. Perfect fallback to local cached state to ensure we NEVER wipe out user data!
+  updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
   return (parsedLocal !== null ? parsedLocal : defaultVal) as T;
 }
 
 async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<T | null> {
-  const localVal = typeof window !== 'undefined' ? localStorage.getItem(fallbackKey) : null;
+  const localVal = globalMemoryStore[fallbackKey] || null;
   let localList: any[] = [];
   if (localVal) {
     try {
@@ -147,17 +146,18 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
     localList = body;
   }
 
-  // Optimistically save to local storage immediately so UI is extremely fast and has zero data loss risk
-  localStorage.setItem(fallbackKey, JSON.stringify(localList));
+  // Optimistically save to globalMemoryStore immediately so UI is extremely fast and has zero data loss risk
+  globalMemoryStore[fallbackKey] = JSON.stringify(localList);
   window.dispatchEvent(new Event('storage'));
 
   if (!supabaseClient) {
-    console.warn('[SUPABASE] Client not configured. Saved locally for', fallbackKey);
     return body as T;
   }
 
   const tableName = getTableNameForKey(fallbackKey);
   const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+
+  updateSyncState({ status: 'saving' });
 
   try {
     let syncSuccess = false;
@@ -184,7 +184,6 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
             .upsert(payload, { onConflict: 'id' });
 
           if (upsertErr) {
-            console.warn(`[SUPABASE WRITE WARNING] Table ${tableName} upsert failed, flagging table and falling back:`, upsertErr);
             if (upsertErr.code === '42P01' || upsertErr.message?.includes('does not exist')) {
               missingTables[tableName] = true;
             }
@@ -215,16 +214,17 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
 
       if (!upsertErr) {
         syncSuccess = true;
-      } else {
-        console.error(`[SUPABASE WRITE ERROR] Central table fallback failed:`, upsertErr);
       }
     }
 
     if (syncSuccess) {
-      console.log(`[SUPABASE POST] Successfully synced "${fallbackKey}" to cloud.`);
+      updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
+    } else {
+      updateSyncState({ status: 'error', error: `Échec d'enregistrement de ${fallbackKey}` });
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[SUPABASE POST] Exception writing ${fallbackKey}:`, err);
+    updateSyncState({ status: 'error', error: err.message || `Erreur de sauvegarde de ${fallbackKey}` });
   }
 
   return body as T;
@@ -232,7 +232,7 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
 
 // Helper to delete from a Supabase collection
 async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): Promise<boolean> {
-  const localVal = typeof window !== 'undefined' ? localStorage.getItem(fallbackKey) : null;
+  const localVal = globalMemoryStore[fallbackKey] || null;
   let localList: any[] = [];
   if (localVal) {
     try {
@@ -245,13 +245,15 @@ async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): 
 
   // Optimistically remove from local state
   const filtered = localList.filter((item: any) => item && item[keyField] !== keyValue);
-  localStorage.setItem(fallbackKey, JSON.stringify(filtered));
+  globalMemoryStore[fallbackKey] = JSON.stringify(filtered);
   window.dispatchEvent(new Event('storage'));
 
   if (!supabaseClient) return true;
 
   const tableName = getTableNameForKey(fallbackKey);
   const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+
+  updateSyncState({ status: 'saving' });
 
   try {
     let deleteSuccess = false;
@@ -266,7 +268,6 @@ async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): 
         if (!error) {
           deleteSuccess = true;
         } else {
-          console.warn(`[SUPABASE DELETE WARNING] Table ${tableName} delete failed, flagging table and falling back:`, error);
           if (error.code === '42P01' || error.message?.includes('does not exist')) {
             missingTables[tableName] = true;
           }
@@ -293,9 +294,16 @@ async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): 
       }
     }
 
+    if (deleteSuccess) {
+      updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
+    } else {
+      updateSyncState({ status: 'error', error: `Échec de suppression sur ${fallbackKey}` });
+    }
+
     return deleteSuccess;
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[SUPABASE DELETE] Exception deleting from ${fallbackKey}:`, err);
+    updateSyncState({ status: 'error', error: err.message || 'Erreur de suppression' });
   }
   return true;
 }
