@@ -146,7 +146,7 @@ export default function PresenceModule({ currentLanguage, currentCompany, curren
       }
     } catch (err) {}
     return [
-      { id: 'BR-DAKAR', name: 'Optic Alizé - Dépôt Central' },
+      { id: 'BR-DAKAR', name: 'Optic Alizé - DIRECTION' },
       { id: 'BR-ABIDJAN', name: 'Agence Plateau' },
       { id: 'BR-LOME', name: 'Agence de Lomé' },
       { id: 'BR-PARIS', name: 'Agence Paris Nation' },
@@ -184,9 +184,7 @@ export default function PresenceModule({ currentLanguage, currentCompany, curren
     const boutique = (currentUserObj.allowedBoutiques && currentUserObj.allowedBoutiques.length > 0)
       ? currentUserObj.allowedBoutiques[0]
       : (currentUserObj.location || '');
-    return boutique.toUpperCase().includes('DÉPÔT CENTRAL') || 
-           boutique.toUpperCase().includes('DEPOT CENTRAL') || 
-           boutique.toUpperCase().includes('DIRECTION');
+    return boutique.toUpperCase().includes('DIRECTION');
   }, [currentUserObj]);
 
   const userAllowedAgencies = React.useMemo(() => {
@@ -218,9 +216,9 @@ export default function PresenceModule({ currentLanguage, currentCompany, curren
       return currentUserObj.location;
     }
     try {
-      return localStorage.getItem('optic_active_presence_boutique') || 'Optic Alizé - Dépôt Central';
+      return localStorage.getItem('optic_active_presence_boutique') || 'Optic Alizé - DIRECTION';
     } catch (e) {}
-    return 'Optic Alizé - Dépôt Central';
+    return 'Optic Alizé - DIRECTION';
   });
 
   // Keep it synchronized if active user changes or restrictions kick in
@@ -238,7 +236,7 @@ export default function PresenceModule({ currentLanguage, currentCompany, curren
   }, [selectedBoutique]);
 
   const boutiqueEmployees = employees.filter(emp => {
-    const bName = emp.boutique || 'Optic Alizé - Dépôt Central';
+    const bName = emp.boutique || 'Optic Alizé - DIRECTION';
     const isDeptAdmin = emp.department && emp.department.toLowerCase().trim() === 'administration';
     return bName.toLowerCase().trim() === selectedBoutique.toLowerCase().trim() && !isDeptAdmin;
   });

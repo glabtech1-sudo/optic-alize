@@ -2906,7 +2906,7 @@ export async function getAccountingSummary(req: Request, res: Response) {
                   className="w-full text-xs font-bold rounded-lg border border-slate-250 bg-white p-2.5 outline-none cursor-pointer focus:ring-1 focus:ring-emerald-500 text-slate-755"
                 >
                   <option value="ALL">🏢 Toutes les agences (Consolidé)</option>
-                  <option value="depot-central">🏢 Optic Alizé - Dépôt Central</option>
+                  <option value="depot-central">🏢 Optic Alizé - DIRECTION</option>
                   {localBranches.map((b) => (
                     <option key={b.id} value={b.id}>🏢 {b.name} ({b.city})</option>
                   ))}

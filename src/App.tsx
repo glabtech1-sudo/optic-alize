@@ -77,7 +77,7 @@ type SaasTab =
   | 'super_admin_monitor';
 
 const companiesList = [
-  { id: 'GLAB', name: 'Optic Alizé - Dépôt Central', currency: 'XOF', taxRate: 18, symbol: 'FCFA' }
+  { id: 'GLAB', name: 'Optic Alizé - DIRECTION', currency: 'XOF', taxRate: 18, symbol: 'FCFA' }
 ];
 
 export default function App() {
@@ -220,9 +220,9 @@ export default function App() {
   const [users, setUsers] = useState<any[]>(() => {
     const saved = localStorage.getItem('optic_users');
     const defaults = [
-      { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
-      { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
-      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' }
+      { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
+      { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
+      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' }
     ];
     if (saved) {
       try {
@@ -319,9 +319,9 @@ export default function App() {
     role: 'Admin',
     status: 'Active',
     phone: '+221 77 124 55 93',
-    location: 'Optic Alizé - Dépôt Central',
+    location: 'Optic Alizé - DIRECTION',
     lastActive: 'Just now',
-    allowedBoutiques: ['Optic Alizé - Dépôt Central'],
+    allowedBoutiques: ['Optic Alizé - DIRECTION'],
     allowedModules: ['dashboard', 'fidelisation', 'fidelisation_sav', 'clinique', 'products', 'commande', 'orders', 'journal', 'websockets', 'revenue', 'reports', 'hr', 'presence', 'gestion_optic', 'settings', 'super_admin_hq', 'dev_portal', 'super_admin_monitor']
   } : undefined);
   const userAllowedModules = loggedInUser ? (loggedInUser.allowedModules || []) : [];
@@ -334,9 +334,7 @@ export default function App() {
       ? loggedInUser.allowedBoutiques[0]
       : (loggedInUser.location || '');
     const bUpper = boutique.toUpperCase();
-    return bUpper.includes('DÉPÔT CENTRAL') || 
-           bUpper.includes('DEPOT CENTRAL') || 
-           bUpper.includes('DIRECTION');
+    return bUpper.includes('DIRECTION');
   }, [loggedInUser, isSuperAdmin]);
 
   const getUserBoutiqueSuffix = () => {
@@ -353,9 +351,7 @@ export default function App() {
     
     if (!cleanBoutique) return '';
     
-    const isDirection = cleanBoutique.toUpperCase() === 'DÉPÔT CENTRAL' || 
-                        cleanBoutique.toUpperCase() === 'DEPOT CENTRAL' || 
-                        cleanBoutique.toUpperCase() === 'DIRECTION';
+    const isDirection = cleanBoutique.toUpperCase() === 'DIRECTION';
     if (isDirection) {
       return ' DIRECTION';
     } else {
@@ -464,7 +460,7 @@ export default function App() {
                 if (matched) {
                   const destinedAgency = (matched.allowedBoutiques && matched.allowedBoutiques.length > 0)
                     ? matched.allowedBoutiques[0]
-                    : (matched.location || 'Optic Alizé - Dépôt Central');
+                    : (matched.location || 'Optic Alizé - DIRECTION');
                   localStorage.setItem('optic_active_presence_boutique', destinedAgency);
                 }
               }

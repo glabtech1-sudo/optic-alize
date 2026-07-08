@@ -124,7 +124,7 @@ export default function SaaSSettings({
   };
 
   const [boutiqueName, setBoutiqueName] = useState(
-    () => localStorage.getItem('optic_boutique_name') || 'Optic Alizé - Dépôt Central'
+    () => localStorage.getItem('optic_boutique_name') || 'Optic Alizé - DIRECTION'
   );
 
   // Logo uploader state

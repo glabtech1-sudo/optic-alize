@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { fetchCustomers, saveCustomer } from '../lib/api';
 import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
@@ -266,9 +266,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
     const boutique = (currentUserObj.allowedBoutiques && currentUserObj.allowedBoutiques.length > 0)
       ? currentUserObj.allowedBoutiques[0]
       : (currentUserObj.location || '');
-    return boutique.toUpperCase().includes('DÉPÔT CENTRAL') || 
-           boutique.toUpperCase().includes('DEPOT CENTRAL') || 
-           boutique.toUpperCase().includes('DIRECTION');
+    return boutique.toUpperCase().includes('DIRECTION');
   }, [currentUserObj]);
 
   const fixedBoutique = isAdminInDirection ? null : (currentUserObj?.allowedBoutiques?.[0] || currentUserObj?.location || 'Paris Nation');
@@ -288,8 +286,15 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
   const [newPhone, setNewPhone] = useState('');
   const [newBirthDate, setNewBirthDate] = useState('');
   const [newSsn, setNewSsn] = useState('');
-  const [newBranch, setNewBranch] = useState(fixedBoutique || 'Paris Nation');
+  const [newBranch, setNewBranch] = useState(() => fixedBoutique || (typeof window !== 'undefined' ? localStorage.getItem('optic_boutique_name') : '') || 'Optic Alizé - DIRECTION');
   const [newLoyaltyTier, setNewLoyaltyTier] = useState<'STANDARD' | 'GOLD' | 'PLATINUM' | 'VIP'>('STANDARD');
+
+  useEffect(() => {
+    if (isRegisteringOpen) {
+      const activeSessionBoutique = (typeof window !== 'undefined' ? localStorage.getItem('optic_boutique_name') : '') || 'Optic Alizé - DIRECTION';
+      setNewBranch(fixedBoutique || activeSessionBoutique);
+    }
+  }, [isRegisteringOpen, fixedBoutique]);
   
   // Simulated State to show feedback when claiming loyalty items or altering records
   const [crmToast, setCrmToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
@@ -439,7 +444,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
 
   // Modern stylized patient medical and loyalty card PDF download trigger
   const handleExportPDF = (patient: Customer) => {
-    const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - Dépôt Central';
+    const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - DIRECTION';
     const logoImage = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || defaultLogo;
     const docTitle = `${boutiqueName.replace(/ /g, '_')}_Fiche_Patient_${patient.lastName.toUpperCase()}_${patient.firstName}.html`;
     
@@ -676,14 +681,15 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
       return;
     }
 
-    if (!newBirthDate || newBirthDate.length !== 8) {
-      triggerToast('Erreur : Veuillez saisir une date de naissance valide à 8 chiffres (JJMMAAAA).', 'info');
+    const rawDigits = newBirthDate.replace(/\D/g, '');
+    if (!rawDigits || rawDigits.length !== 8) {
+      triggerToast('Erreur : Veuillez saisir une date de naissance valide (JJ/MM/AAAA).', 'info');
       return;
     }
 
-    const day = newBirthDate.slice(0, 2);
-    const month = newBirthDate.slice(2, 4);
-    const year = newBirthDate.slice(4, 8);
+    const day = rawDigits.slice(0, 2);
+    const month = rawDigits.slice(2, 4);
+    const year = rawDigits.slice(4, 8);
     const parsedBirthDate = `${year}-${month}-${day}`;
 
     // Calculate sequential identification matricule
@@ -1605,18 +1611,6 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
                 
                 <div className="grid grid-cols-2 gap-3.5">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wide">Prénom *</label>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="e.g. Jean"
-                      value={newFirstName}
-                      onChange={(e) => setNewFirstName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 rounded-lg text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
                     <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wide">Nom de famille *</label>
                     <input 
                       type="text" 
@@ -1627,22 +1621,43 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
                       className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 rounded-lg text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wide">Prénom *</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. Jean"
+                      value={newFirstName}
+                      onChange={(e) => setNewFirstName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 rounded-lg text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3.5">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wide">Date de Naissance * (8 chiffres)</label>
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wide">Date de Naissance * (JJ/MM/AAAA)</label>
                     <input 
                       type="text"
-                      maxLength={8}
+                      maxLength={10}
                       required
-                      placeholder="JJMMAAAA (ex: 15061985)"
+                      placeholder="JJ/MM/AAAA (ex: 15/06/1985)"
                       value={newBirthDate}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (/^\d*$/.test(val)) {
-                          setNewBirthDate(val);
+                        let val = e.target.value.replace(/\D/g, '');
+                        if (val.length > 8) val = val.slice(0, 8);
+                        let formatted = '';
+                        if (val.length > 0) {
+                          formatted += val.slice(0, 2);
                         }
+                        if (val.length > 2) {
+                          formatted += '/' + val.slice(2, 4);
+                        }
+                        if (val.length > 4) {
+                          formatted += '/' + val.slice(4, 8);
+                        }
+                        setNewBirthDate(formatted);
                       }}
                       className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
@@ -1689,22 +1704,9 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
                 <div className="grid grid-cols-2 gap-3.5">
                   <div className="space-y-1">
                     <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wide">Agence de Rattachement</label>
-                    {fixedBoutique ? (
-                      <div className="w-full bg-slate-950 border border-dashed border-slate-800 text-xs px-3 py-2.5 rounded-lg text-emerald-300 font-mono font-black">
-                        {fixedBoutique} (Fixée d'Office)
-                      </div>
-                    ) : (
-                      <select 
-                        value={newBranch}
-                        onChange={(e) => setNewBranch(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 rounded-lg text-white font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                      >
-                        <option value="Paris Nation">Paris Nation</option>
-                        <option value="Lyon Bellecour">Lyon Bellecour</option>
-                        <option value="Marseille Vieux-Port">Marseille Vieux-Port</option>
-                        <option value="Bordeaux Centre">Bordeaux Centre</option>
-                      </select>
-                    )}
+                    <div className="w-full bg-slate-950 border border-dashed border-slate-800 text-xs px-3 py-2.5 rounded-lg text-emerald-300 font-mono font-black uppercase">
+                      {newBranch} (Fixée d'Office par Session)
+                    </div>
                   </div>
 
                   <div className="space-y-1">
@@ -1735,7 +1737,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
                     type="submit"
                     className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition cursor-pointer"
                   >
-                    Confirmer & Enregistrer Clinique
+                    Enregistrer le Client
                   </button>
                 </div>
 

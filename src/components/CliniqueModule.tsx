@@ -111,7 +111,7 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
   };
 
   // Helper values for dynamic context
-  const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - Dépôt Central';
+  const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - DIRECTION';
   const currentUserEmail = localStorage.getItem('optic_user_email') || 'glabtech1@gmail.com';
 
   // Helper PDFs

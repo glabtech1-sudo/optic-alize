@@ -1,4 +1,21 @@
 import { supabaseClient, unpackData, missingTables, updateSyncState, globalMemoryStore, syncCollectionToSupabase } from './supabaseSync';
+import {
+  mapEmployeeToSupabase,
+  mapAttendanceToSupabase,
+  mapLeaveToSupabase,
+  mapAdjustmentToSupabase,
+  mapPayslipToSupabase,
+  mapCustomerToSupabase,
+  mapProductToSupabase,
+  mapOrderToSupabase,
+  mapAuditLogToSupabase,
+  mapAppointmentToSupabase,
+  mapSightExamToSupabase,
+  mapPrescriptionToSupabase,
+  mapCompanyToSupabase,
+  mapBranchToSupabase,
+  mapUserToSupabase
+} from '../utils/supabaseMappers';
 
 export function getAccessToken(): string | null {
   return localStorage.getItem('optic_access_token');
@@ -96,12 +113,22 @@ async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Pro
     }
 
     try {
-      const { data, error } = await supabaseClient
+      let { data, error } = await supabaseClient
         .from('opticalize_sync')
         .select('data')
         .eq('collection_name', fallbackKey)
         .eq('boutique_name', boutiqueName)
         .maybeSingle();
+      
+      if (error && error.code !== '42P01' && !error.message?.includes('does not exist')) {
+        const retryResult = await supabaseClient
+          .from('opticalize_sync')
+          .select('data')
+          .eq('collection_name', fallbackKey)
+          .maybeSingle();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
       
       if (!error && data && data.data) {
         updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
@@ -172,10 +199,41 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
           if (!item || typeof item !== 'object') continue;
           const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
           
+          // Apply schema mappers based on the fallbackKey / module
+          let mappedItem = item;
+          if (fallbackKey === 'optic_crm_customers') {
+            const mapped = mapCustomerToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_fused_catalog') {
+            const mapped = mapProductToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_saas_orders') {
+            const mapped = mapOrderToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_audit_logs') {
+            const mapped = mapAuditLogToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_my_clinic_appointments') {
+            const mapped = mapAppointmentToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_my_clinic_exams') {
+            const mapped = mapSightExamToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_my_prescriptions') {
+            const mapped = mapPrescriptionToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_hq_companies') {
+            const mapped = mapCompanyToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (fallbackKey === 'optic_hq_branches') {
+            const mapped = mapBranchToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          }
+
           const payload = {
             id: String(itemId),
             boutique_name: boutiqueName,
-            data: { value: item },
+            data: { value: mappedItem },
             updated_at: new Date().toISOString()
           };
 
@@ -201,16 +259,53 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
 
     // Try core fallback table
     if (!syncSuccess) {
-      const { error: upsertErr } = await supabaseClient
+      const mappedLocalList = Array.isArray(localList) ? localList.map((item: any) => {
+        if (!item || typeof item !== 'object') return item;
+        if (fallbackKey === 'optic_crm_customers') {
+          return mapCustomerToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_fused_catalog') {
+          return mapProductToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_saas_orders') {
+          return mapOrderToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_audit_logs') {
+          return mapAuditLogToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_my_clinic_appointments') {
+          return mapAppointmentToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_my_clinic_exams') {
+          return mapSightExamToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_my_prescriptions') {
+          return mapPrescriptionToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_hq_companies') {
+          return mapCompanyToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (fallbackKey === 'optic_hq_branches') {
+          return mapBranchToSupabase(item, boutiqueName)?.data?.value || item;
+        }
+        return item;
+      }) : localList;
+
+      let { error: upsertErr } = await supabaseClient
         .from('opticalize_sync')
         .upsert({
           collection_name: fallbackKey,
           boutique_name: boutiqueName,
-          data: { value: localList },
+          data: { value: mappedLocalList },
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'collection_name,boutique_name'
         });
+
+      if (upsertErr) {
+        const retryResult = await supabaseClient
+          .from('opticalize_sync')
+          .upsert({
+            collection_name: fallbackKey,
+            data: { value: mappedLocalList },
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'collection_name'
+          });
+        upsertErr = retryResult.error;
+      }
 
       if (!upsertErr) {
         syncSuccess = true;
@@ -278,7 +373,7 @@ async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): 
     }
 
     if (!deleteSuccess) {
-      const { error: upsertErr } = await supabaseClient
+      let { error: upsertErr } = await supabaseClient
         .from('opticalize_sync')
         .upsert({
           collection_name: fallbackKey,
@@ -288,6 +383,19 @@ async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): 
         }, {
           onConflict: 'collection_name,boutique_name'
         });
+
+      if (upsertErr) {
+        const retryResult = await supabaseClient
+          .from('opticalize_sync')
+          .upsert({
+            collection_name: fallbackKey,
+            data: { value: filtered },
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'collection_name'
+          });
+        upsertErr = retryResult.error;
+      }
 
       if (!upsertErr) {
         deleteSuccess = true;
@@ -576,27 +684,7 @@ export async function fetchHREmployees(): Promise<any[]> {
 export async function saveHREmployee(emp: any): Promise<any> {
   if (!supabaseClient) return emp;
   try {
-    const payload = {
-      id: emp.id,
-      first_name: emp.firstName,
-      last_name: emp.lastName,
-      position: emp.position,
-      department: emp.department,
-      email: emp.email,
-      phone: emp.phone,
-      hire_date: emp.hireDate,
-      basic_salary: emp.basicSalary,
-      status: emp.status,
-      boutique: emp.boutique,
-      photo: emp.photo,
-      pin_code: emp.pinCode,
-      birth_date: emp.birthDate,
-      id_card_number: emp.idCardNumber,
-      contract_type: emp.contractType,
-      face_id_registered: !!emp.faceIdRegistered,
-      liveness_proof: !!emp.livenessProof,
-      company_id: 'TG'
-    };
+    const payload = mapEmployeeToSupabase(emp);
     const { error } = await supabaseClient.from('employees').upsert(payload);
     if (error) {
       if (!handleTableMissingError('employees', error)) {
@@ -662,23 +750,7 @@ export async function fetchAttendanceLedger(): Promise<any[]> {
 export async function saveAttendanceEntry(entry: any): Promise<any> {
   if (!supabaseClient) return entry;
   try {
-    const payload = {
-      id: entry.id,
-      employee_id: entry.employeeId,
-      employee_name: entry.employeeName,
-      date: entry.date,
-      status: entry.status,
-      check_in_time: entry.checkInTime,
-      pause_time: entry.pauseTime,
-      reprise_time: entry.repriseTime,
-      check_out_time: entry.checkOutTime,
-      notes: entry.notes,
-      photo: entry.photo,
-      boutique: entry.boutique,
-      gps_coords: entry.gpsCoords,
-      facial_match_score: entry.facialMatchScore,
-      company_id: 'TG'
-    };
+    const payload = mapAttendanceToSupabase(entry);
     const { error } = await supabaseClient.from('attendance').upsert(payload);
     if (error) {
       if (!handleTableMissingError('attendance', error)) {
@@ -722,18 +794,7 @@ export async function fetchLeaveRequests(): Promise<any[]> {
 export async function saveLeaveRequest(req: any): Promise<any> {
   if (!supabaseClient) return req;
   try {
-    const payload = {
-      id: req.id,
-      employee_id: req.employeeId,
-      employee_name: req.employeeName,
-      leave_type: req.leaveType,
-      start_date: req.startDate,
-      end_date: req.endDate,
-      days_count: req.daysCount,
-      status: req.status,
-      reason: req.reason,
-      company_id: 'TG'
-    };
+    const payload = mapLeaveToSupabase(req);
     const { error } = await supabaseClient.from('leaves').upsert(payload);
     if (error) {
       if (!handleTableMissingError('leaves', error)) {
@@ -776,17 +837,7 @@ export async function fetchAdjustments(): Promise<any[]> {
 export async function saveAdjustment(adj: any): Promise<any> {
   if (!supabaseClient) return adj;
   try {
-    const payload = {
-      id: adj.id,
-      employee_id: adj.employeeId,
-      employee_name: adj.employeeName,
-      type: adj.type,
-      amount: adj.amount,
-      date: adj.date,
-      description: adj.description,
-      status: adj.status,
-      company_id: 'TG'
-    };
+    const payload = mapAdjustmentToSupabase(adj);
     const { error } = await supabaseClient.from('adjustments').upsert(payload);
     if (error) {
       if (!handleTableMissingError('adjustments', error)) {
@@ -839,27 +890,7 @@ export async function fetchPayslips(): Promise<any[]> {
 export async function savePayslip(pay: any): Promise<any> {
   if (!supabaseClient) return pay;
   try {
-    const payload = {
-      id: pay.id,
-      employee_id: pay.employeeId,
-      employee_name: pay.employeeName,
-      employee_position: pay.employeePosition,
-      period: pay.period,
-      basic_salary: pay.basicSalary,
-      total_primes: pay.totalPrimes,
-      total_avances: pay.totalAvances,
-      social_deductions: pay.socialDeductions,
-      tax_deductions: pay.taxDeductions,
-      net_salary: pay.netSalary,
-      payment_status: pay.paymentStatus,
-      payment_date: pay.paymentDate,
-      presences_count: pay.presencesCount,
-      absences_count: pay.absencesCount,
-      loans_deduction: pay.loansDeduction,
-      custom_primes: pay.customPrimes,
-      custom_withdrawals: pay.customWithdrawals,
-      company_id: 'TG'
-    };
+    const payload = mapPayslipToSupabase(pay);
     const { error } = await supabaseClient.from('payslips').upsert(payload);
     if (error) {
       if (!handleTableMissingError('payslips', error)) {

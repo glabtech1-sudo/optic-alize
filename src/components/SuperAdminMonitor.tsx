@@ -216,7 +216,7 @@ export default function SuperAdminMonitor({ currentLanguage, currentUserEmail }:
         const logLevels = ['info', 'warn', 'success'] as const;
         const randomLevel = logLevels[Math.floor(Math.random() * logLevels.length)];
         
-        const randomNames = ["Boutique Dakar", "Terminal Abidjan", "Dépôt Central", "Gildas Terminal", "Glabtech Node"];
+        const randomNames = ["Boutique Dakar", "Terminal Abidjan", "DIRECTION", "Gildas Terminal", "Glabtech Node"];
         const randomActions = [
           "re-evaluated customer optical prescription cache file",
           "issued a symmetric Fletcher16 checksum audit",

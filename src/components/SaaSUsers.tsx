@@ -47,9 +47,9 @@ export default function SaaSUsers({
       } catch (e) {}
     }
     return [
-      { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' },
-      { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' },
-      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - Dépôt Central', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - Dépôt Central'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' }
+      { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' },
+      { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' },
+      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'websockets', 'reports', 'hr', 'settings'], password: 'Gildas@00741' }
     ];
   });
 
@@ -146,7 +146,7 @@ export default function SaaSUsers({
 
   // Read active boutiques from props, localStorage fallback or static defaults as requested
   let listAllBoutiques = [
-    'Optic Alizé - Dépôt Central'
+    'Optic Alizé - DIRECTION'
   ];
 
   if (createdBoutiques && createdBoutiques.length > 0) {

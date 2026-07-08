@@ -144,7 +144,7 @@ export interface SimulatedSimultaneousSession {
 export function generateSimulatedLoad(count: number = 72): SimulatedSimultaneousSession[] {
   const modules = ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'clinique', 'presence'];
   const locations = [
-    'Optic Alizé - Dépôt Central', 
+    'Optic Alizé - DIRECTION', 
     'Agence Abidjan', 
     'Agence Dakar Plateaux', 
     'Agence Delta',

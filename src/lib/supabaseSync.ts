@@ -1,4 +1,16 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import {
+  mapCustomerToSupabase,
+  mapProductToSupabase,
+  mapOrderToSupabase,
+  mapAuditLogToSupabase,
+  mapAppointmentToSupabase,
+  mapSightExamToSupabase,
+  mapPrescriptionToSupabase,
+  mapCompanyToSupabase,
+  mapBranchToSupabase,
+  mapUserToSupabase
+} from '../utils/supabaseMappers';
 
 // Support both Node.js (process.env) and Vite (import.meta.env) with robust fallback defaults
 const envUrl = (typeof process !== 'undefined' && process.env?.SUPABASE_URL)
@@ -258,10 +270,41 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
           if (!item || typeof item !== 'object') continue;
           const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
           
+          // Apply schema mappers based on the key / module
+          let mappedItem = item;
+          if (key === 'optic_crm_customers') {
+            const mapped = mapCustomerToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_fused_catalog') {
+            const mapped = mapProductToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_saas_orders') {
+            const mapped = mapOrderToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_audit_logs') {
+            const mapped = mapAuditLogToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_my_clinic_appointments') {
+            const mapped = mapAppointmentToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_my_clinic_exams') {
+            const mapped = mapSightExamToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_my_prescriptions') {
+            const mapped = mapPrescriptionToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_hq_companies') {
+            const mapped = mapCompanyToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          } else if (key === 'optic_hq_branches') {
+            const mapped = mapBranchToSupabase(item, boutiqueName);
+            mappedItem = mapped?.data?.value || item;
+          }
+
           const payload = {
             id: String(itemId),
             boutique_name: boutiqueName,
-            data: { value: item },
+            data: { value: mappedItem },
             updated_at: new Date().toISOString()
           };
 
@@ -289,16 +332,53 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
 
     // Fallback to central opticalize_sync table
     if (!syncSuccess && isSyncTableAvailable) {
-      const { error } = await supabaseClient
+      const mappedCleanData = Array.isArray(cleanData) ? cleanData.map((item: any) => {
+        if (!item || typeof item !== 'object') return item;
+        if (key === 'optic_crm_customers') {
+          return mapCustomerToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_fused_catalog') {
+          return mapProductToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_saas_orders') {
+          return mapOrderToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_audit_logs') {
+          return mapAuditLogToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_my_clinic_appointments') {
+          return mapAppointmentToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_my_clinic_exams') {
+          return mapSightExamToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_my_prescriptions') {
+          return mapPrescriptionToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_hq_companies') {
+          return mapCompanyToSupabase(item, boutiqueName)?.data?.value || item;
+        } else if (key === 'optic_hq_branches') {
+          return mapBranchToSupabase(item, boutiqueName)?.data?.value || item;
+        }
+        return item;
+      }) : cleanData;
+
+      let { error } = await supabaseClient
         .from('opticalize_sync')
         .upsert({
           collection_name: key,
           boutique_name: boutiqueName,
-          data: { value: cleanData },
+          data: { value: mappedCleanData },
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'collection_name,boutique_name'
         });
+
+      if (error) {
+        const retryResult = await supabaseClient
+          .from('opticalize_sync')
+          .upsert({
+            collection_name: key,
+            data: { value: mappedCleanData },
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'collection_name'
+          });
+        error = retryResult.error;
+      }
 
       if (!error) {
         syncSuccess = true;
@@ -348,12 +428,22 @@ export async function loadCollectionFromSupabase(key: string): Promise<any | nul
     }
 
     if (isSyncTableAvailable) {
-      const { data, error } = await supabaseClient
+      let { data, error } = await supabaseClient
         .from('opticalize_sync')
         .select('data')
         .eq('collection_name', key)
         .eq('boutique_name', boutiqueName)
         .maybeSingle();
+
+      if (error && error.code !== '42P01' && error.code !== 'PGRST205' && !error.message?.includes('does not exist')) {
+        const retryResult = await supabaseClient
+          .from('opticalize_sync')
+          .select('data')
+          .eq('collection_name', key)
+          .maybeSingle();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
 
       if (!error && data && data.data) {
         return unpackData(data.data);
@@ -433,10 +523,18 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
 
     // 2. Pull remaining collections from opticalize_sync table
     if (isSyncTableAvailable) {
-      const { data, error } = await supabaseClient
+      let { data, error } = await supabaseClient
         .from('opticalize_sync')
         .select('collection_name, data')
         .eq('boutique_name', boutiqueName);
+
+      if (error && error.code !== '42P01' && error.code !== 'PGRST205' && !error.message?.includes('does not exist')) {
+        const retryResult = await supabaseClient
+          .from('opticalize_sync')
+          .select('collection_name, data');
+        data = retryResult.data;
+        error = retryResult.error;
+      }
 
       if (!error && data && data.length > 0) {
         data.forEach((row: any) => {

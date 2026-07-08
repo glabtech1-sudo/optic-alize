@@ -212,7 +212,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
       return;
     }
     if (targetComp.stock < val) {
-      alert(`Stock insuffisant dans le Dépôt Central : seulement ${targetComp.stock} disponibles. Veuillez réapprovisionner le Dépôt d'abord.`);
+      alert(`Stock insuffisant dans la DIRECTION : seulement ${targetComp.stock} disponibles. Veuillez réapprovisionner la DIRECTION d'abord.`);
       return;
     }
 
@@ -1109,7 +1109,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
             }`}
           >
             <FolderLock className="w-3.5 h-3.5" />
-            <span>🔑 Gérant (Dépôt Central)</span>
+            <span>🔑 Gérant (DIRECTION)</span>
           </button>
           
           {localBranches.map((b, index) => {
@@ -1719,7 +1719,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                 </h3>
                 <p className="text-xs text-slate-500 leading-relaxed font-sans font-medium">
                   {currentRole === 'GESTIONNAIRE'
-                    ? "Vue à plat et directe des stocks disponibles dans chaque filiale nationale, avec pouvoir de transfert et de réapprovisionnement depuis le Dépôt Central d'Optic Alizé."
+                    ? "Vue à plat et directe des stocks disponibles dans chaque filiale nationale, avec pouvoir de transfert et de réapprovisionnement depuis la DIRECTION d'Optic Alizé."
                     : "Consultez le stock en temps réel de votre franchise, enregistrez des ventes, et suivez les alertes de réapprovisionnement reçues."}
                 </p>
               </div>
@@ -1790,7 +1790,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                         return (
                           <div key={item.sku} className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-emerald-100 text-emerald-800 shadow-3xs">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                            <span>Alerte d'approvisionnement envoyée pour <strong>{item.name}</strong> (Quantité critique en boutique : {item.qty} u.). Une palette de réapprovisionnement depuis le Dépôt Central d'Optic Alizé est attendue.</span>
+                            <span>Alerte d'approvisionnement envoyée pour <strong>{item.name}</strong> (Quantité critique en boutique : {item.qty} u.). Une palette de réapprovisionnement depuis la DIRECTION d'Optic Alizé est attendue.</span>
                           </div>
                         );
                       }

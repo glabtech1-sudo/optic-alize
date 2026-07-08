@@ -143,8 +143,8 @@ BEGIN
         new.email,
         coalesce(new.raw_user_meta_data->>'role', 'Viewer'),
         'Active',
-        coalesce(new.raw_user_meta_data->>'location', 'Optic Alizé - Dépôt Central'),
-        array[coalesce(new.raw_user_meta_data->>'location', 'Optic Alizé - Dépôt Central')],
+        coalesce(new.raw_user_meta_data->>'location', 'Optic Alizé - DIRECTION'),
+        array[coalesce(new.raw_user_meta_data->>'location', 'Optic Alizé - DIRECTION')],
         array['dashboard', 'presence']
     )
     ON CONFLICT (id) DO NOTHING;

@@ -601,8 +601,119 @@ export default function HRModule({
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = String(d.getFullYear());
-    return `${day}${month}${year}`;
+    return `${day}/${month}/${year}`;
   });
+
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
+
+  const renderMiniCalendar = () => {
+    const monthNames = [
+      "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+      "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+    ];
+
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+    const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+    const adjustedFirstDay = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
+
+    const blanks = Array(adjustedFirstDay).fill(null);
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const weekdays = ["Lu", "Ma", "Me", "Je", "Ve", "Sa", "Di"];
+
+    const handlePrevMonth = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (calendarMonth === 0) {
+        setCalendarMonth(11);
+        setCalendarYear(prev => prev - 1);
+      } else {
+        setCalendarMonth(prev => prev - 1);
+      }
+    };
+
+    const handleNextMonth = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (calendarMonth === 11) {
+        setCalendarMonth(0);
+        setCalendarYear(prev => prev + 1);
+      } else {
+        setCalendarMonth(prev => prev + 1);
+      }
+    };
+
+    const selectDate = (day: number, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const dStr = String(day).padStart(2, '0');
+      const mStr = String(calendarMonth + 1).padStart(2, '0');
+      const yStr = String(calendarYear);
+      setNewEmpHireDate(`${dStr}/${mStr}/${yStr}`);
+      setShowDatePicker(false);
+    };
+
+    return (
+      <div 
+        onClick={e => e.stopPropagation()}
+        className="absolute left-0 mt-1 z-50 w-64 bg-slate-900 border border-slate-800 text-slate-100 p-3 rounded-xl shadow-2xl space-y-2 text-left font-sans"
+      >
+        <div className="flex justify-between items-center pb-2 border-b border-slate-850">
+          <button 
+            type="button" 
+            onClick={handlePrevMonth}
+            className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white text-xs transition cursor-pointer"
+          >
+            ◀
+          </button>
+          <div className="text-xs font-bold text-white font-mono uppercase">
+            {monthNames[calendarMonth]} {calendarYear}
+          </div>
+          <button 
+            type="button" 
+            onClick={handleNextMonth}
+            className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white text-xs transition cursor-pointer"
+          >
+            ▶
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-mono text-slate-400 font-bold uppercase">
+          {weekdays.map(wd => (
+            <div key={wd}>{wd}</div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center text-xs font-mono">
+          {blanks.map((_, idx) => (
+            <div key={`blank-${idx}`} className="p-1"></div>
+          ))}
+          {days.map(day => {
+            const isToday = new Date().getDate() === day && new Date().getMonth() === calendarMonth && new Date().getFullYear() === calendarYear;
+            const dayStr = String(day).padStart(2, '0');
+            const monthStr = String(calendarMonth + 1).padStart(2, '0');
+            const targetDateStr = `${dayStr}/${monthStr}/${calendarYear}`;
+            const isSelected = newEmpHireDate === targetDateStr;
+
+            return (
+              <button
+                key={`day-${day}`}
+                type="button"
+                onClick={(e) => selectDate(day, e)}
+                className={`p-1 rounded-lg transition text-[11px] font-bold cursor-pointer ${
+                  isSelected 
+                    ? 'bg-cyan-600 text-white' 
+                    : isToday 
+                      ? 'border border-cyan-500 text-cyan-400 hover:bg-slate-800' 
+                      : 'hover:bg-slate-800 text-slate-300'
+                }`}
+              >
+                {day}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const updateAutoValues = (first: string, last: string, birthDigits: string) => {
     const cleanLast = last
@@ -3969,30 +4080,21 @@ class HrDashboardView extends ConsumerWidget {
                       <option value="Prestataire">Prestataire</option>
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400 font-mono">Date d'embauche * (22/06/2026)</label>
-                    <input 
-                      type="text" 
-                      required
-                      maxLength={10}
-                      placeholder="JJMMAAAA (22/06/2026)"
-                      value={newEmpHireDate} 
-                      onChange={e => {
-                        let digits = e.target.value.replace(/\D/g, '').substring(0, 8);
-                        let formatted = '';
-                        if (digits.length > 0) {
-                          formatted += digits.substring(0, 2);
-                        }
-                        if (digits.length > 2) {
-                          formatted += '/' + digits.substring(2, 4);
-                        }
-                        if (digits.length > 4) {
-                          formatted += '/' + digits.substring(4, 8);
-                        }
-                        setNewEmpHireDate(formatted);
-                      }}
-                      className="w-full bg-[#F5F7FA] border border-[#DDE3EA] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#00BCD4]"
-                    />
+                  <div className="space-y-1 relative">
+                    <label className="text-[10px] font-bold uppercase text-slate-400 font-mono">Date d'embauche * (JJ/MM/AAAA)</label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        required
+                        readOnly
+                        placeholder="Cliquez pour sélectionner"
+                        value={newEmpHireDate} 
+                        onClick={() => setShowDatePicker(prev => !prev)}
+                        className="w-full bg-[#F5F7FA] border border-[#DDE3EA] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#00BCD4] pr-10 cursor-pointer"
+                      />
+                      <span className="absolute right-3 top-2 text-slate-400 pointer-events-none text-xs">📅</span>
+                    </div>
+                    {showDatePicker && renderMiniCalendar()}
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Photo d’identité (Biométrie par Webcam) *</label>
@@ -4271,6 +4373,11 @@ class HrDashboardView extends ConsumerWidget {
                       <option value="RCM">RCM - Resp Marketing</option>
                       <option value="AGS">AGS - Achat & Gestion Stocks</option>
                       <option value="SC">SC - Secrétaire Comptable</option>
+                      <option value="commercial">Commercial</option>
+                      <option value="employé">Employé</option>
+                      <option value="gardien">Gardien</option>
+                      <option value="livreur">Livreur</option>
+                      <option value="informaticien">Informaticien</option>
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -5374,6 +5481,11 @@ class HrDashboardView extends ConsumerWidget {
                       <option value="RCM">RCM - Resp Marketing</option>
                       <option value="AGS">AGS - Achat & Gestion Stocks</option>
                       <option value="SC">SC - Secrétaire Comptable</option>
+                      <option value="commercial">Commercial</option>
+                      <option value="employé">Employé</option>
+                      <option value="gardien">Gardien</option>
+                      <option value="livreur">Livreur</option>
+                      <option value="informaticien">Informaticien</option>
                     </select>
                   </div>
                   <div className="space-y-1">

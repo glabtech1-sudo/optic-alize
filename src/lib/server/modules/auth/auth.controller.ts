@@ -69,7 +69,7 @@ authRouter.get(
           role: prof?.role || u.user_metadata?.role || 'Viewer',
           status: prof?.status || (u.email_confirmed_at ? 'Active' : 'Invited'),
           phone: prof?.phone || u.phone || u.user_metadata?.phone || '',
-          location: prof?.location || u.user_metadata?.location || 'Optic Alizé - Dépôt Central',
+          location: prof?.location || u.user_metadata?.location || 'Optic Alizé - DIRECTION',
           lastActive: prof?.last_active || u.last_sign_in_at || 'Jamais',
           allowedBoutiques: prof?.allowed_boutiques || u.user_metadata?.allowed_boutiques || [],
           allowedModules: prof?.allowed_modules || u.user_metadata?.allowed_modules || []

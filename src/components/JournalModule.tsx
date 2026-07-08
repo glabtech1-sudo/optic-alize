@@ -159,7 +159,7 @@ export default function JournalModule({ currentLanguage = 'FR' }: JournalModuleP
 
   const downloadReceiptPDF = (type: 'vente' | 'commande' | 'patient', item: any) => {
     const doc = new jsPDF();
-    const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - Dépôt Central';
+    const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - DIRECTION';
     const currentUserEmail = localStorage.getItem('optic_user_email') || 'glabtech1@gmail.com';
     const isFR = currentLanguage === 'FR';
 

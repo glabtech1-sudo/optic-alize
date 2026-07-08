@@ -110,7 +110,7 @@ export default function SaaSOrders({
   currentCompany,
   isOffline = false
 }: SaaSOrdersProps) {
-  const currentShop = currentCompany?.name || "Optic Alizé - Dépôt Central";
+  const currentShop = currentCompany?.name || "Optic Alizé - DIRECTION";
   const currentCashier = "M. Diallo (Caisse Globale Unifiée)";
   
   // Tab layout aligns strictly: caisse; sav; historique
@@ -140,7 +140,7 @@ export default function SaaSOrders({
     }
 
     // Preseeded orders for central boutique, empty for new ones!
-    if (currentShop === "Optic Alizé - Dépôt Central" && localStorage.getItem('optic_system_factory_reset') !== 'true') {
+    if (currentShop === "Optic Alizé - DIRECTION" && localStorage.getItem('optic_system_factory_reset') !== 'true') {
       const defaults: Order[] = [
         { 
           id: 'ORD-9842', 
@@ -152,7 +152,7 @@ export default function SaaSOrders({
           total: 244000, 
           discountAmount: 15000,
           paymentMethod: 'Carte Bancaire / MOMO', 
-          shop: 'Optic Alizé - Dépôt Central',
+          shop: 'Optic Alizé - DIRECTION',
           cashier: 'M. Diallo (Gérant principal)',
           items: [
             { id: 'FC-101', name: 'Ray-Ban Wayfarer Classic (RB2140)', brand: 'Luxottica', priceFCFA: 104000, qty: 1, eyeSide: 'NONE', discountPercent: 0 },
@@ -172,7 +172,7 @@ export default function SaaSOrders({
           total: 123000, 
           discountAmount: 0,
           paymentMethod: 'MOMO / Wave', 
-          shop: 'Optic Alizé - Dépôt Central',
+          shop: 'Optic Alizé - DIRECTION',
           cashier: 'M. Diallo (Gérant principal)',
           items: [
             { id: 'FC-103', name: 'Oakley Holbrook Sport polarized', brand: 'Luxottica', priceFCFA: 123000, qty: 1, eyeSide: 'NONE', discountPercent: 0 }
@@ -191,7 +191,7 @@ export default function SaaSOrders({
           total: 95000, 
           discountAmount: 10000,
           paymentMethod: 'Espèces', 
-          shop: 'Optic Alizé - Dépôt Central',
+          shop: 'Optic Alizé - DIRECTION',
           cashier: 'M. Diallo (Gérant principal)',
           items: [
             { id: 'FC-105', name: 'Zeiss SmartLife progressive Platinum', brand: 'Zeiss', priceFCFA: 95000, qty: 1, eyeSide: 'BOTH', discountPercent: 10 }

@@ -91,7 +91,7 @@ const PRESET_USERS = [
   { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Agence Alpha' },
   { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Agence Bêta' },
   { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Agence Gamma' },
-  { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'Dépôt Central' }
+  { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'DIRECTION' }
 ];
 
 const PRESET_ATTACHMENTS: QuickAttachment[] = [
@@ -116,6 +116,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
   const isUserAdmin = (user: { id: string; role: string; shop: string }) => {
     return user.id === 'staff_4' || 
            user.role.toLowerCase().includes('admin') || 
+           user.shop.toLowerCase().includes('direction') || 
            user.shop.toLowerCase().includes('dépôt') || 
            user.shop.toLowerCase().includes('administration');
   };
@@ -123,7 +124,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
   const [activeDestination, setActiveDestination] = useState<{ type: 'group' | 'private'; id: string; label: string }>({
     type: 'private',
     id: 'staff_4',
-    label: 'Alexandre (Administrateur) (Dépôt Central)'
+    label: 'Alexandre (Administrateur) (DIRECTION)'
   });
 
   const [messages, setMessages] = useState<Message[]>([
@@ -134,7 +135,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       senderId: 'staff_1',
       senderName: 'Sophie (Opticienne-Conseil)',
       senderShop: '🏢 Agence Alpha',
-      content: "Bonjour l'équipe d'Optic Alizé ! Est-ce que le transfert de montures et verres progressifs depuis le Dépôt Central a bien été validé ?",
+      content: "Bonjour l'équipe d'Optic Alizé ! Est-ce que le transfert de montures et verres progressifs depuis la DIRECTION a bien été validé ?",
       attachment: null,
       createdAt: new Date(Date.now() - 3600000 * 2.5).toISOString()
     },
@@ -166,7 +167,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
     {
       id: 'ann_init_1',
       title: '📦 Procédure d\'approvisionnement inter-agences activée',
-      content: 'Chaque filiale d\'Optic Alizé peut désormais enregistrer ses ventes locales et envoyer des alertes de réapprovisionnement. Seul le Dépôt Central d\'Optic Alizé dispose du bouton d\'émission du transfert logistique.',
+      content: 'Chaque filiale d\'Optic Alizé peut désormais enregistrer ses ventes locales et envoyer des alertes de réapprovisionnement. Seule la DIRECTION d\'Optic Alizé dispose du bouton d\'émission du transfert logistique.',
       createdAt: new Date(Date.now() - 3600000 * 6).toISOString(),
       senderName: 'Direction Générale Optic Alizé'
     }
@@ -176,7 +177,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
     { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Agence Alpha' },
     { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Agence Bêta' },
     { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Agence Gamma' },
-    { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'Dépôt Central' }
+    { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'DIRECTION' }
   ]);
 
   const [typingUsers, setTypingUsers] = useState<{ [key: string]: string }>({});
@@ -703,7 +704,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       setActiveDestination({
         type: 'private',
         id: 'staff_4',
-        label: 'Alexandre (Administrateur) (Dépôt Central)'
+        label: 'Alexandre (Administrateur) (DIRECTION)'
       });
     } else {
       setActiveDestination({
