@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, UserPlus, Shield, Mail, Phone, MapPin, Edit2, Trash2, Check, X, Filter, Lock, Eye, EyeOff } from 'lucide-react';
 import { fetchUsers, saveUser, deleteUser as apiDeleteUser } from '../lib/api';
@@ -67,17 +68,21 @@ export default function SaaSUsers({
     initialData: users && users.length > 0 ? users : undefined,
   });
 
-  const activeUsers = qUsers || users || localUsers;
+  const activeUsers = (qUsers || users || localUsers).filter(Boolean);
   const activeSetUsers = setUsers || setLocalUsers;
 
   // React Query Cache synchronization effect
   useEffect(() => {
     if (qUsers) {
-      if (setUsers) setUsers(qUsers);
+      if (setUsers) {
+        if (JSON.stringify(qUsers) !== JSON.stringify(users)) {
+          setUsers(qUsers);
+        }
+      }
       setLocalUsers(qUsers);
       localStorage.setItem('optic_users', JSON.stringify(qUsers));
     }
-  }, [qUsers, setUsers]);
+  }, [qUsers, setUsers, users]);
 
   // Mutations for instant React Query cache updates
   const saveUserMutation = useMutation({
@@ -134,7 +139,7 @@ export default function SaaSUsers({
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // Authenticated user checks
-  const loggedInUser = activeUsers.find(u => u.email === currentUserEmail);
+  const loggedInUser = activeUsers.find(u => u && u.email === currentUserEmail);
   const isAdmin = loggedInUser?.role === 'Admin' || 
                   currentUserEmail === 'glabtech1@gmail.com' || 
                   currentUserEmail === 'glabtech1@opticalize.com' || 
@@ -178,6 +183,7 @@ export default function SaaSUsers({
     { id: 'hr', label: currentLanguage === 'FR' ? 'Ressources Humaines' : 'Human Resources' },
     { id: 'presence', label: currentLanguage === 'FR' ? 'Présence Employés' : 'Staff Attendance' },
     { id: 'gestion_optic', label: currentLanguage === 'FR' ? 'Gestion Optic' : 'Optic Management' },
+    { id: 'super_admin_hq', label: currentLanguage === 'FR' ? 'Super Admin HQ (Global Admin)' : 'Super Admin HQ (Global Admin)' },
     { id: 'super_admin_monitor', label: currentLanguage === 'FR' ? 'Supervision HQ (Super Admin)' : 'Supervision HQ (Super Admin)' },
     { id: 'settings', label: currentLanguage === 'FR' ? 'Paramètres' : 'Settings & Localization' }
   ];
@@ -189,8 +195,8 @@ export default function SaaSUsers({
   const [newUserRole, setNewUserRole] = useState<User['role']>('Gérant');
   const [newUserStatus, setNewUserStatus] = useState<'Active' | 'Suspended' | 'Pending MFA' | 'Invited'>('Active');
   const [newUserPhone, setNewUserPhone] = useState('');
-  const [newUserLocation, setNewUserLocation] = useState(listAllBoutiques[0] || 'Agence Alpha');
-  const [newUserBoutiques, setNewUserBoutiques] = useState<string[]>([listAllBoutiques[0] || 'Agence Alpha']);
+  const [newUserLocation, setNewUserLocation] = useState(listAllBoutiques[0] || 'Direction');
+  const [newUserBoutiques, setNewUserBoutiques] = useState<string[]>([listAllBoutiques[0] || 'Direction']);
   const [newUserModules, setNewUserModules] = useState<string[]>(['dashboard', 'fidelisation']);
   const [selectedHrEmpId, setSelectedHrEmpId] = useState('');
   
@@ -403,7 +409,7 @@ export default function SaaSUsers({
       role: newUserRole,
       status: newUserStatus,
       phone: newUserPhone || '+228 90 00 00 00',
-      location: newUserLocation || 'Agence Alpha',
+      location: newUserLocation || listAllBoutiques[0] || 'Direction',
       lastActive: 'Never',
       allowedBoutiques: newUserBoutiques,
       allowedModules: newUserModules,
@@ -427,8 +433,8 @@ export default function SaaSUsers({
     setNewUserRole('Editor');
     setNewUserStatus('Active');
     setNewUserPhone('');
-    setNewUserLocation('Agence Alpha');
-    setNewUserBoutiques(['Agence Alpha']);
+    setNewUserLocation(listAllBoutiques[0] || 'Direction');
+    setNewUserBoutiques([listAllBoutiques[0] || 'Direction']);
     setNewUserModules(['dashboard', 'fidelisation']);
     setSelectedHrEmpId('');
     
@@ -896,17 +902,26 @@ export default function SaaSUsers({
             </h3>
             <p className="text-xs text-slate-400 font-medium mt-1">
               {currentLanguage === 'FR' 
-                ? "Configurez en direct les 16 modules métiers d'Opticalize pour chacun des 10 profils de sécurité."
-                : "Grant or restrict access to any of the 16 core Opticalize modules dynamically for all 10 platform roles."}
+                ? "Configurez en direct les 17 modules métiers d'Opticalize pour chacun des 10 profils de sécurité."
+                : "Grant or restrict access to any of the 17 core Opticalize modules dynamically for all 10 platform roles."}
             </p>
           </div>
-          <button
-            onClick={handleSaveMatrix}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 text-xs bg-indigo-600 hover:bg-indigo-550 text-white font-bold rounded-xl transition-all duration-150 shadow-sm cursor-pointer active:scale-98"
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>{currentLanguage === 'FR' ? "Sauvegarder la Matrice" : "Save Matrix"}</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-xs bg-emerald-600 hover:bg-emerald-550 text-white font-bold rounded-xl transition-all duration-150 shadow-sm cursor-pointer active:scale-98"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-emerald-100" />
+              <span>{currentLanguage === 'FR' ? "Créer un profil de sécurité pour un utilisateur" : "Create user security profile"}</span>
+            </button>
+            <button
+              onClick={handleSaveMatrix}
+              className="flex items-center gap-1.5 px-4.5 py-2.5 text-xs bg-indigo-600 hover:bg-indigo-550 text-white font-bold rounded-xl transition-all duration-150 shadow-sm cursor-pointer active:scale-98"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{currentLanguage === 'FR' ? "Sauvegarder la Matrice" : "Save Matrix"}</span>
+            </button>
+          </div>
         </div>
 
         {lastSavedMatrix && (
@@ -1007,6 +1022,7 @@ export default function SaaSUsers({
                 modules: [
                   { key: 'hr', name: currentLanguage === 'FR' ? 'Ressources Humaines (RH)' : 'Human Resources (HR)', desc: currentLanguage === 'FR' ? 'Paie, contrats salariés, livre d’or' : 'Payroll, staff contracts & pay books' },
                   { key: 'presence', name: currentLanguage === 'FR' ? 'Présence & Émargement' : 'Attendance Face-clock', desc: currentLanguage === 'FR' ? 'Émargement par selfie de garde intelligent' : 'Selfie biometric clock-in ledger' },
+                  { key: 'super_admin_hq', name: currentLanguage === 'FR' ? 'Super Admin HQ (Administration Globale)' : 'Super Admin HQ (Global Administration)', desc: currentLanguage === 'FR' ? 'Administration globale et droits souverains' : 'Global system admin and sovereign access' },
                   { key: 'super_admin_monitor', name: currentLanguage === 'FR' ? 'Supervision HQ (Global)' : 'Supervision HQ Monitoring', desc: currentLanguage === 'FR' ? 'État des services, santé BDD' : 'Technical logs & server status monitoring' },
                   { key: 'settings', name: currentLanguage === 'FR' ? 'Configuration générale' : 'Localization Settings', desc: currentLanguage === 'FR' ? 'TVA locales, options agences et logos' : 'VAT configurations, enterprise presets' }
                 ]

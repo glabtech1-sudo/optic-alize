@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, ShieldAlert, Globe, Eye, EyeOff, ChevronRight, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 import { loginUser, verifyMFA } from '../lib/api';
+import { safeLocalStorage } from '../lib/supabaseSync';
 
 interface LoginPageProps {
   users: any[];
@@ -9,6 +10,7 @@ interface LoginPageProps {
   setCurrentLanguage: (lang: 'FR' | 'EN') => void;
   onLoginSuccess: (email: string) => void;
   appLogo?: string;
+  onBack?: () => void;
 }
 
 export default function LoginPage({ 
@@ -16,11 +18,24 @@ export default function LoginPage({
   currentLanguage, 
   setCurrentLanguage, 
   onLoginSuccess,
-  appLogo
+  appLogo,
+  onBack
 }: LoginPageProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('optic_remember_me') === 'true');
+  const [email, setEmail] = React.useState(() => {
+    if (safeLocalStorage.getItem('optic_remember_me') === 'true') {
+      return safeLocalStorage.getItem('optic_remembered_email') || '';
+    }
+    return '';
+  });
+  const [password, setPassword] = React.useState(() => {
+    if (safeLocalStorage.getItem('optic_remember_me') === 'true') {
+      return safeLocalStorage.getItem('optic_remembered_password') || '';
+    }
+    return '';
+  });
+  const [rememberMe, setRememberMe] = React.useState(() => {
+    return safeLocalStorage.getItem('optic_remember_me') === 'true';
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -56,13 +71,13 @@ export default function LoginPage({
 
       if (data.accessToken && data.user) {
         if (rememberMe) {
-          localStorage.setItem('optic_remember_me', 'true');
-          localStorage.setItem('optic_remembered_email', data.user.email);
-          localStorage.setItem('optic_remembered_password', password);
+          safeLocalStorage.setItem('optic_remember_me', 'true');
+          safeLocalStorage.setItem('optic_remembered_email', data.user.email);
+          safeLocalStorage.setItem('optic_remembered_password', password);
         } else {
-          localStorage.removeItem('optic_remember_me');
-          localStorage.removeItem('optic_remembered_email');
-          localStorage.removeItem('optic_remembered_password');
+          safeLocalStorage.removeItem('optic_remember_me');
+          safeLocalStorage.removeItem('optic_remembered_email');
+          safeLocalStorage.removeItem('optic_remembered_password');
         }
 
         setIsLoading(false);
@@ -108,11 +123,23 @@ export default function LoginPage({
       
       {/* Upper bar with dynamic branding label and modern language switch */}
       <div className="w-full max-w-7xl mx-auto flex justify-between items-center z-10">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-          <span className="text-[10px] uppercase font-black font-mono tracking-widest text-[#1E3A8A] bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
-            {mfaRequired ? 'MFA DOUBLE FACTEUR • ACTIF' : 'SÉCURISÉ • SSL COMPLIANT'}
-          </span>
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs bg-white hover:bg-slate-50 text-blue-950 hover:text-blue-700 font-bold rounded-xl border border-slate-200 transition duration-150 cursor-pointer shadow-sm"
+              id="back-to-landing-btn"
+            >
+              ← {currentLanguage === 'FR' ? 'Accueil' : 'Home'}
+            </button>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+            <span className="text-[10px] uppercase font-black font-mono tracking-widest text-[#1E3A8A] bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100 hidden xs:inline-block">
+              {mfaRequired ? 'MFA DOUBLE FACTEUR • ACTIF' : 'SÉCURISÉ • SSL COMPLIANT'}
+            </span>
+          </div>
         </div>
         
         <button
@@ -340,10 +367,32 @@ export default function LoginPage({
       </div>
 
       {/* Required footer specified by the user */}
-      <div className="w-full text-center z-10 py-2">
-        <span className="text-[10px] text-blue-950 font-bold font-mono tracking-wide">
+      <div className="w-full text-center z-10 py-2 space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('optic_theme_accent', 'blue');
+                localStorage.setItem('optic_app_language', 'FR');
+                localStorage.removeItem('optic_app_logo');
+                localStorage.removeItem('optic_app_logo_base64');
+                localStorage.removeItem('optic_app_logo_watermark');
+                localStorage.removeItem('optic_active_presence_boutique');
+                sessionStorage.removeItem('optic_session_active');
+                window.location.reload();
+              } catch (e) {
+                console.error(e);
+              }
+            }
+          }}
+          className="text-[9px] uppercase tracking-wider font-extrabold text-blue-800 hover:text-blue-650 transition underline decoration-dotted cursor-pointer"
+        >
+          {currentLanguage === 'FR' ? "Réinitialiser l'affichage & la Session" : "Reset Display & Session Settings"}
+        </button>
+        <div className="text-[10px] text-blue-950 font-bold font-mono tracking-wide">
           ©2026 G-lab tech Optic alizé v2 pro
-        </span>
+        </div>
       </div>
 
     </div>

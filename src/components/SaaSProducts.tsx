@@ -14,7 +14,24 @@ export default function SaaSProducts({ darkMode = false, currentLanguage = 'FR' 
 
   React.useEffect(() => {
     fetchProducts().then(data => {
-      setProducts(data);
+      if (Array.isArray(data)) {
+        const mapped = data
+          .filter(Boolean)
+          .map((p: any) => ({
+            id: p.id || '',
+            type: (p.category || 'MONTURE') as any,
+            name: p.name || '',
+            brand: p.brand || 'G-LAB Premium',
+            sku: p.barcode || p.id || '',
+            stock: p.stock !== undefined ? p.stock : 999,
+            priceFCFA: p.price !== undefined ? p.price : 0,
+            spec: p.icon || 'Standard optique calibré'
+          }))
+          .filter((p: any) => p.id);
+        setProducts(mapped);
+      } else {
+        setProducts([]);
+      }
       setIsLoading(false);
     }).catch(err => {
       console.error("Failed to fetch products:", err);
@@ -49,9 +66,9 @@ export default function SaaSProducts({ darkMode = false, currentLanguage = 'FR' 
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.brand.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.sku.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (p.brand || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (p.sku || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || p.type === selectedCategory;
     
     const probStatus = getProductStatus(p);
@@ -175,7 +192,7 @@ export default function SaaSProducts({ darkMode = false, currentLanguage = 'FR' 
                 <div className={`pt-2 space-y-1.5 border-t border-slate-100`}>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 font-semibold">{currentLanguage === 'FR' ? "Prix de vente :" : "Selling Price :"}</span>
-                    <span className="text-xs font-black text-[#0F172A] dark:text-white font-mono">{p.priceFCFA.toLocaleString()} FCFA</span>
+                    <span className="text-xs font-black text-[#0F172A] dark:text-white font-mono">{(p.priceFCFA || 0).toLocaleString()} FCFA</span>
                   </div>
                   <div className="flex justify-between items-center pt-1">
                     <span className={`px-2 py-0.5 rounded text-[9px] font-black ${getStockBadge(status)}`}>

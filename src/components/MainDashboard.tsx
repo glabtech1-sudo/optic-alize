@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   DollarSign, ShoppingCart, Package, Activity, Compass, 
@@ -83,13 +84,37 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
   const [selectedRing, setSelectedRing] = useState<'blue' | 'red' | 'yellow' | 'green' | 'orange'>('blue');
   const t = translations[currentLanguage];
 
+  const [tick, setTick] = useState(0);
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const dynamicBranches = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('optic_hq_branches');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter(b => b && typeof b === 'object').map(b => b.name || '');
+        }
+      }
+    } catch (e) {}
+    return ['Agence Alpha', 'Agence Bêta', 'Agence Gamma'];
+  }, [tick]);
+
   // Dynamic currency math:
   let rate = 1;
-  if (currentCompany.id === 'SN') rate = 655.95; // FCFA
-  if (currentCompany.id === 'CA') rate = 1.48;   // CA$
+  const companyId = currentCompany?.id || 'GLAB';
+  if (companyId === 'SN') rate = 655.95; // FCFA
+  if (companyId === 'CA') rate = 1.48;   // CA$
   
   const formatMoney = (val: number) => {
-    return `${(val * rate).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currentCompany.symbol}`;
+    const rounded = Math.round(val * rate);
+    const formatted = rounded.toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 0 });
+    return `${formatted} ${currentCompany?.symbol || 'FCFA'}`;
   };
 
   const triggerRefresh = () => {
@@ -131,7 +156,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
     }
     
     return sumBase;
-  }, []);
+  }, [tick]);
 
   const netProfitBase = React.useMemo(() => {
     if (totalTurnoverBase === 0) return 0;
@@ -150,7 +175,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
     }
     const profit = totalTurnoverBase - expensesBase;
     return profit > 0 ? profit : totalTurnoverBase * 0.73;
-  }, [totalTurnoverBase]);
+  }, [totalTurnoverBase, tick]);
 
   const totalCompletedOrders = React.useMemo(() => {
     let count = 0;
@@ -172,7 +197,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
       } catch (e) {}
     }
     return count;
-  }, []);
+  }, [tick]);
 
   const totalInStockSKUs = React.useMemo(() => {
     let count = 0;
@@ -191,7 +216,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
       } catch (e) {}
     }
     return count;
-  }, []);
+  }, [tick]);
 
   const totalRefractions = React.useMemo(() => {
     const saved = localStorage.getItem('optic_my_clinic_appointments');
@@ -202,7 +227,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
       } catch (e) {}
     }
     return 0;
-  }, []);
+  }, [tick]);
 
   const totalSav = React.useMemo(() => {
     const saved = localStorage.getItem('optic_sav_claims');
@@ -213,7 +238,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
       } catch (e) {}
     }
     return 0;
-  }, []);
+  }, [tick]);
 
   const medicalYield = React.useMemo(() => {
     if (localStorage.getItem('optic_system_factory_reset') === 'true') {
@@ -245,7 +270,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
     const totalExams = examCount || 1;
     const rate = Math.min(100, Math.round((orderCount / totalExams) * 100)) || 0;
     return { percent: `${rate}%`, text: `${orderCount} / ${examCount} dossiers fiches`, barWidth: `${rate}%` };
-  }, []);
+  }, [tick]);
 
   const logisticsPerformance = React.useMemo(() => {
     if (localStorage.getItem('optic_system_factory_reset') === 'true') {
@@ -265,7 +290,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
       } catch (e) {}
     }
     return { hours: '2.4 h', barWidth: '60%' };
-  }, []);
+  }, [tick]);
 
   const qualityFeedback = React.useMemo(() => {
     if (localStorage.getItem('optic_system_factory_reset') === 'true') {
@@ -300,7 +325,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
     const stars = Math.round(ratingVal);
     
     return { rating: ratingStr, percent: pctStr, stars };
-  }, []);
+  }, [tick]);
 
   // Dynamic KPI metadata
   const kpiCards = [
@@ -376,16 +401,18 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
         const parsed = JSON.parse(savedCommandes);
         if (Array.isArray(parsed) && parsed.length > 0) {
           parsed.slice(-2).forEach((item: any) => {
-            list.push({
-              id: `act-cmd-${item.id}`,
-              event: currentLanguage === 'FR' 
-                ? `Nouvelle commande enregistrée pour ${item.customer}` 
-                : `New sales order approved for ${item.customer}`,
-              type: 'payment',
-              time: 'Enregistré',
-              badge: currentLanguage === 'FR' ? 'Vente' : 'Sales',
-              badgeStyle: 'bg-[#DCFCE7] text-[#166534]'
-            });
+            if (item) {
+              list.push({
+                id: `act-cmd-${item.id || Math.random()}`,
+                event: currentLanguage === 'FR' 
+                  ? `Nouvelle commande enregistrée pour ${item.customer || 'Client'}` 
+                  : `New sales order approved for ${item.customer || 'Client'}`,
+                type: 'payment',
+                time: 'Enregistré',
+                badge: currentLanguage === 'FR' ? 'Vente' : 'Sales',
+                badgeStyle: 'bg-[#DCFCE7] text-[#166534]'
+              });
+            }
           });
         }
       } catch (e) {}
@@ -397,16 +424,18 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
         const parsed = JSON.parse(savedCrm);
         if (Array.isArray(parsed) && parsed.length > 0) {
           parsed.slice(-2).forEach((item: any) => {
-            list.push({
-              id: `act-crm-${item.id}`,
-              event: currentLanguage === 'FR' 
-                ? `Fiche patient créée pour ${item.firstName} ${item.lastName}` 
-                : `Patient file opened for ${item.firstName} ${item.lastName}`,
-              type: 'user',
-              time: 'Patient',
-              badge: currentLanguage === 'FR' ? 'Clinique' : 'Clinic',
-              badgeStyle: 'bg-[#DBEAFE] text-[#1E40AF]'
-            });
+            if (item) {
+              list.push({
+                id: `act-crm-${item.id || Math.random()}`,
+                event: currentLanguage === 'FR' 
+                  ? `Fiche patient créée pour ${item.firstName || ''} ${item.lastName || ''}` 
+                  : `Patient file opened for ${item.firstName || ''} ${item.lastName || ''}`,
+                type: 'user',
+                time: 'Patient',
+                badge: currentLanguage === 'FR' ? 'Clinique' : 'Clinic',
+                badgeStyle: 'bg-[#DBEAFE] text-[#1E40AF]'
+              });
+            }
           });
         }
       } catch (e) {}
@@ -426,7 +455,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
     }
     
     return list.slice(0, 4);
-  }, [currentLanguage]);
+  }, [currentLanguage, tick]);
 
   // Recent Accounting transactions table data dynamically combined
   const recentTransactions = React.useMemo(() => {
@@ -475,7 +504,7 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
     }
     
     return list.slice(-4).reverse();
-  }, []);
+  }, [tick]);
 
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
@@ -777,9 +806,9 @@ export default function MainDashboard({ darkMode = false, currentLanguage, curre
                   <rect x="180" y="105" width="220" height="18" rx="4" fill="#F59E0B" />
 
                   {/* Text Markers directly in SVG for ultimate graphic style */}
-                  <text x="50" y="38" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">AGENCE DELTA</text>
-                  <text x="50" y="78" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">AGENCE EPSILON</text>
-                  <text x="50" y="118" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">AGENCE ALPHA</text>
+                  <text x="50" y="38" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">{(dynamicBranches[2] || 'Agence Gamma').toUpperCase()}</text>
+                  <text x="50" y="78" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">{(dynamicBranches[1] || 'Agence Bêta').toUpperCase()}</text>
+                  <text x="50" y="118" fill="#475569" fontSize="10" fontWeight="bold" fontFamily="monospace">{(dynamicBranches[0] || 'Agence Alpha').toUpperCase()}</text>
                 </svg>
               )}
             </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { 
   Cpu, HardDrive, Database, RefreshCw, Activity, Layers, Users, Building, ShieldCheck, 
   Terminal, FileText, CheckCircle, Smartphone, AlertTriangle, Play, Pause, Server, Zap, Compass, Trash,

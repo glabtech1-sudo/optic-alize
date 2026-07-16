@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { fetchCustomers, saveCustomer } from '../lib/api';
 import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
@@ -144,6 +145,41 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBranchFilter, setSelectedBranchFilter] = useState('All');
   const [selectedLoyaltyFilter, setSelectedLoyaltyFilter] = useState('All');
+
+  // Load created agencies dynamically from localStorage
+  const [createdAgencies, setCreatedAgencies] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('optic_hq_branches');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [
+      { id: 'dir', name: 'Optic Alizé - DIRECTION' }
+    ];
+  });
+
+  useEffect(() => {
+    const handleSyncAgencies = () => {
+      try {
+        const saved = localStorage.getItem('optic_hq_branches');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setCreatedAgencies(parsed);
+          }
+        }
+      } catch (e) {}
+    };
+    handleSyncAgencies();
+    window.addEventListener('storage', handleSyncAgencies);
+    const interval = setInterval(handleSyncAgencies, 2000);
+    return () => {
+      window.removeEventListener('storage', handleSyncAgencies);
+      clearInterval(interval);
+    };
+  }, []);
   const [selectedPrescriptionFilter, setSelectedPrescriptionFilter] = useState('All');
   const [selectedWarrantyFilter, setSelectedWarrantyFilter] = useState('All');
 
@@ -792,13 +828,13 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
             <User className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-display font-bold text-slate-800 uppercase tracking-wider block">
-              {currentLanguage === 'FR' ? "Client & Fidélisation" : "Client & Loyalty Management"}
+            <h3 className="text-sm font-display font-black text-slate-800 uppercase tracking-wider block">
+              {currentLanguage === 'FR' ? "REGISTRE CLIENTS" : "CLIENT REGISTRY"}
             </h3>
             <p className="text-[10px] font-mono text-slate-500">
               {currentLanguage === 'FR' 
-                ? "Dossiers patients cliniques, prescriptions, encaissements mutuelles & fidélité" 
-                : "Clinical patient records, prescription tracking, health insurance claims & reward points"}
+                ? "Registre unique des patients et clients de l'agence" 
+                : "Centralized store agency patient and client registry"}
             </p>
           </div>
         </div>
@@ -834,53 +870,21 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
 
       </div>
 
-      {/* 4 KPI Cards Grid inside the CRM Header */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="crm-summary-grids">
-        
-        {/* KPI 1 : Patients total */}
-        <div className="bg-white p-4 rounded-xl border border-slate-105 shadow-sm flex items-center gap-3.5">
-          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
-            <User className="w-5 h-5" />
+      {/* KPI display: Total patients only */}
+      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/60 flex items-center justify-between shadow-3xs" id="crm-summary-grids">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-[#0097A7]/10 text-[#0097a7] rounded-xl">
+            <User className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase block">Patients Référencés</span>
-            <div className="text-lg font-bold font-display text-slate-805">{currentCrmStats.totalPatients} dossiers</div>
+            <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase block">Base de Données Clients</span>
+            <div className="text-xl font-black font-display text-slate-850">
+              {currentLanguage === 'FR' 
+                ? `Nombre total de clients dans la base : ${customers.length} dossiers` 
+                : `Total customers in database: ${customers.length} records`}
+            </div>
           </div>
         </div>
-
-        {/* KPI 2 : Gold, Platine & VIP loyal */}
-        <div className="bg-white p-4 rounded-xl border border-slate-105 shadow-sm flex items-center gap-3.5">
-          <div className="p-2.5 bg-amber-50 text-amber-600 rounded-lg shrink-0">
-            <Award className="w-5 h-5 animate-pulse" />
-          </div>
-          <div>
-            <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase block">Membres Privilégiés (CRM)</span>
-            <div className="text-lg font-bold font-display text-amber-600">{currentCrmStats.premiumLoyalPatients} comptes</div>
-          </div>
-        </div>
-
-        {/* KPI 3 : Ordonnances expirées ou near expiry */}
-        <div className="bg-white p-4 rounded-xl border border-slate-105 shadow-sm flex items-center gap-3.5">
-          <div className="p-2.5 bg-rose-50 text-rose-600 rounded-lg shrink-0">
-            <ShieldAlert className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase block">Ordonnances Expirées</span>
-            <div className="text-lg font-bold font-display text-rose-600">{currentCrmStats.criticalPrescriptions} alertes</div>
-          </div>
-        </div>
-
-        {/* KPI 4 : Active warranties */}
-        <div className="bg-white p-4 rounded-xl border border-slate-105 shadow-sm flex items-center gap-3.5">
-          <div className="p-2.5 bg-cyan-50 text-cyan-600 rounded-lg shrink-0">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase block">Garanties Optiques Actives</span>
-            <div className="text-lg font-bold font-display text-cyan-600">{currentCrmStats.activeWarranties} polices</div>
-          </div>
-        </div>
-
       </div>
 
       {/* Content panes based on Sub Tab */}
@@ -1023,10 +1027,11 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
                 ) : (
                   <>
                     <option value="All">Toutes les succursales</option>
-                    <option value="Paris Nation">Paris Nation</option>
-                    <option value="Lyon Bellecour">Lyon Bellecour</option>
-                    <option value="Marseille Vieux-Port">Marseille Vieux-Port</option>
-                    <option value="Bordeaux Centre">Bordeaux Centre</option>
+                    {createdAgencies.map((agency) => (
+                      <option key={agency.id || agency.name} value={agency.name}>
+                        {agency.name}
+                      </option>
+                    ))}
                   </>
                 )}
               </select>

@@ -4,6 +4,7 @@
  */
 
 import { defaultLogoBase64 } from '../assets/logoBase64';
+import { safeLocalStorage } from '../lib/supabaseSync';
 
 export function preloadLogoAndWatermark(logoUrl: string) {
   if (typeof window === 'undefined') return;
@@ -29,7 +30,7 @@ export function preloadLogoAndWatermark(logoUrl: string) {
       if (ctxSolid) {
         ctxSolid.drawImage(img, 0, 0);
         const base64Solid = canvasSolid.toDataURL('image/jpeg', 0.85);
-        localStorage.setItem('optic_app_logo_base64', base64Solid);
+        safeLocalStorage.setItem('optic_app_logo_base64', base64Solid);
       }
       
       // 2. Create low-opacity (watermark) base64
@@ -43,7 +44,7 @@ export function preloadLogoAndWatermark(logoUrl: string) {
         ctxWatermark.globalAlpha = 0.06; // low opacity for background watermark
         ctxWatermark.drawImage(img, 0, 0, 400, 400);
         const base64Watermark = canvasWatermark.toDataURL('image/png'); // PNG supports alpha channel
-        localStorage.setItem('optic_app_logo_watermark', base64Watermark);
+        safeLocalStorage.setItem('optic_app_logo_watermark', base64Watermark);
       }
     } catch (e) {
       console.warn('Failed to pre-compute logo base64:', e);
@@ -60,7 +61,7 @@ export function preloadLogoAndWatermark(logoUrl: string) {
       const ctxSolid = canvasSolid.getContext('2d');
       if (ctxSolid) {
         drawDefaultVectorLogo(ctxSolid, 1.0);
-        localStorage.setItem('optic_app_logo_base64', canvasSolid.toDataURL('image/png'));
+        safeLocalStorage.setItem('optic_app_logo_base64', canvasSolid.toDataURL('image/png'));
       }
       
       // Watermark vector fallback
@@ -70,7 +71,7 @@ export function preloadLogoAndWatermark(logoUrl: string) {
       const ctxWatermark = canvasWatermark.getContext('2d');
       if (ctxWatermark) {
         drawDefaultVectorLogo(ctxWatermark, 0.06);
-        localStorage.setItem('optic_app_logo_watermark', canvasWatermark.toDataURL('image/png'));
+        safeLocalStorage.setItem('optic_app_logo_watermark', canvasWatermark.toDataURL('image/png'));
       }
     } catch (err) {
       console.error(err);

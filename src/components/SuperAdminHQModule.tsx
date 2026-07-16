@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { 
   Building2, Globe, Users, ShoppingCart, BarChart3, Database, 
   Plus, Search, Sliders, Shield, BookOpen, Clock, Code, FileCode, CheckCircle, 
@@ -74,6 +75,7 @@ export const ALL_AVAILABLE_MODULES = [
   { id: 'fidelisation_sav', label: 'Fidélisation & S.A.V', description: 'Programme de fidélisation et service après-vente.' },
   { id: 'clinique', label: 'Clinique & Prescription', description: 'Tests optométriques, fiches de réfraction et ordonnances.' },
   { id: 'products', label: 'Catalogue Optic', description: 'Stocks de verres, montures et accessoires.' },
+  { id: 'stock_inventaire', label: 'Stock & Inventaire', description: 'Suivi des stocks d\'approvisionnement locaux et ravitaillements virtuels.' },
   { id: 'commande', label: 'Commande Optic', description: 'Suivi et expéditions chez les fournisseurs et labos.' },
   { id: 'orders', label: 'Point de Vente', description: 'Facturation, encaissements multicartes et devis mutuelles.' },
   { id: 'journal', label: 'Journal de caisse', description: 'Suivi des écarts d\'espèces et archivage des pièces jointes.' },
@@ -203,9 +205,7 @@ export default function SuperAdminHQModule({
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    const defaults: Zone[] = [];
-    localStorage.setItem('optic_hq_zones', JSON.stringify(defaults));
-    return defaults;
+    return [];
   });
 
   const [branches, setBranches] = useState<Branch[]>(() => {
@@ -213,12 +213,15 @@ export default function SuperAdminHQModule({
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.map(b => ({
+            ...b,
+            name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
+          }));
+        }
       } catch (e) {}
     }
-    const defaults: Branch[] = [];
-    localStorage.setItem('optic_hq_branches', JSON.stringify(defaults));
-    return defaults;
+    return [];
   });
 
   const [sales, setSales] = useState<HQSale[]>(() => {
@@ -255,6 +258,14 @@ export default function SuperAdminHQModule({
   });
 
   useEffect(() => {
+    localStorage.setItem('optic_hq_zones', JSON.stringify(zones));
+  }, [zones]);
+
+  useEffect(() => {
+    localStorage.setItem('optic_hq_branches', JSON.stringify(branches));
+  }, [branches]);
+
+  useEffect(() => {
     localStorage.setItem('optic_hq_sales', JSON.stringify(sales));
   }, [sales]);
 
@@ -265,6 +276,57 @@ export default function SuperAdminHQModule({
   useEffect(() => {
     localStorage.setItem('optic_hq_pending_orders', JSON.stringify(hqPendingOrders));
   }, [hqPendingOrders]);
+
+  const [tick, setTick] = useState(0);
+
+  // Real-time synchronization interval with local storage / database
+  useEffect(() => {
+    const handleReload = () => {
+      try {
+        setTick(t => t + 1);
+        const savedSales = localStorage.getItem('optic_hq_sales');
+        if (savedSales) {
+          const parsed = JSON.parse(savedSales);
+          if (Array.isArray(parsed)) {
+            setSales(prev => JSON.stringify(prev) === savedSales ? prev : parsed);
+          }
+        }
+        
+        const savedEmp = localStorage.getItem('optic_hq_employees');
+        if (savedEmp) {
+          const parsed = JSON.parse(savedEmp);
+          if (Array.isArray(parsed)) {
+            setEmployees(prev => JSON.stringify(prev) === savedEmp ? prev : parsed);
+          }
+        }
+        
+        const savedBranches = localStorage.getItem('optic_hq_branches');
+        if (savedBranches) {
+          const parsed = JSON.parse(savedBranches);
+          if (Array.isArray(parsed)) {
+            const mappedBranches = parsed.map((b: any) => ({
+              ...b,
+              name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
+            }));
+            setBranches(prev => JSON.stringify(prev) === JSON.stringify(mappedBranches) ? prev : mappedBranches);
+          }
+        }
+        
+        const savedPending = localStorage.getItem('optic_hq_pending_orders');
+        if (savedPending) {
+          const parsed = JSON.parse(savedPending);
+          if (Array.isArray(parsed)) {
+            setHqPendingOrders(prev => JSON.stringify(prev) === savedPending ? prev : parsed);
+          }
+        }
+      } catch (e) {
+        console.error("Real-time sync reload error in HQ module:", e);
+      }
+    };
+    
+    const interval = setInterval(handleReload, 1500);
+    return () => clearInterval(interval);
+  }, []);
 
   // --- CRUD AND ARCHITECTURE CODE EXPORTER ACTION ---
   const [showAddZoneModal, setShowAddZoneModal] = useState(false);
@@ -296,7 +358,19 @@ export default function SuperAdminHQModule({
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const unique: {id: string; branch_id: string; module_name: string; is_enabled: boolean}[] = [];
+          const seen = new Set<string>();
+          parsed.forEach((item: any) => {
+            if (item && item.id) {
+              if (!seen.has(item.id)) {
+                seen.add(item.id);
+                unique.push(item);
+              }
+            }
+          });
+          return unique;
+        }
       } catch (e) {}
     }
     const defaults: {id: string; branch_id: string; module_name: string; is_enabled: boolean}[] = [];
@@ -318,7 +392,6 @@ export default function SuperAdminHQModule({
         });
       });
     });
-    localStorage.setItem('optic_hq_branch_modules', JSON.stringify(defaults));
     return defaults;
   });
 
@@ -331,6 +404,7 @@ export default function SuperAdminHQModule({
     crm: true,
     clinique: true,
     products: true,
+    stock_inventaire: true,
     commande: true,
     orders: true,
     journal: true,
@@ -499,7 +573,8 @@ export default function SuperAdminHQModule({
       module_name: m.id,
       is_enabled: !!newBranchModules[m.id]
     }));
-    const updatedBmList = [...branchModules, ...newBmRecords];
+    const otherBm = branchModules.filter(bm => bm.branch_id !== branch.id);
+    const updatedBmList = [...otherBm, ...newBmRecords];
     setBranchModules(updatedBmList);
     localStorage.setItem('optic_hq_branch_modules', JSON.stringify(updatedBmList));
 
@@ -998,8 +1073,167 @@ export default function SuperAdminHQModule({
     return val;
   };
 
+  const formatVal = (v: number) => {
+    return Math.round(v).toLocaleString('fr-FR', { useGrouping: false });
+  };
+
+  const getRealTurnoverForBranch = (branch: Branch) => {
+    let total = 0;
+    
+    // 1. Check in optic_hq_sales
+    const branchSales = sales.filter(s => s.branch_id === branch.id);
+    branchSales.forEach(s => {
+      total += eurToFcfa(s.amount, s.currency);
+    });
+
+    // 2. Check in optic_saas_orders_* (real orders placed in cashier)
+    for (let i = 0; i < localStorage.getLength(); i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('optic_saas_orders_')) {
+        try {
+          const dataStr = localStorage.getItem(key);
+          if (dataStr) {
+            const orders = JSON.parse(dataStr);
+            if (Array.isArray(orders)) {
+              orders.forEach((ord: any) => {
+                const matchesBranch = 
+                  (ord.shop && (
+                    ord.shop.toLowerCase().includes(branch.city.toLowerCase()) || 
+                    ord.shop.toLowerCase().includes(branch.name.toLowerCase()) ||
+                    branch.name.toLowerCase().includes(ord.shop.toLowerCase())
+                  )) ||
+                  key.toLowerCase().includes(branch.city.toLowerCase()) ||
+                  key.toLowerCase().includes(branch.name.toLowerCase());
+                  
+                if (matchesBranch && ord.status !== 'cancelled' && ord.status !== 'Cancelled') {
+                  const amt = Number(ord.total || ord.totalFCFA || 0);
+                  total += amt;
+                }
+              });
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 3. Check in optic_my_commandes (real orders in laboratory)
+    try {
+      const savedCmds = localStorage.getItem('optic_my_commandes');
+      if (savedCmds) {
+        const cmds = JSON.parse(savedCmds);
+        if (Array.isArray(cmds)) {
+          cmds.forEach((cmd: any) => {
+            const matchesBranch = 
+              (cmd.branch && (
+                cmd.branch.toLowerCase().includes(branch.city.toLowerCase()) ||
+                cmd.branch.toLowerCase().includes(branch.name.toLowerCase())
+              )) ||
+              (cmd.clientBranch && (
+                cmd.clientBranch.toLowerCase().includes(branch.city.toLowerCase()) ||
+                cmd.clientBranch.toLowerCase().includes(branch.name.toLowerCase())
+              ));
+              
+            if (matchesBranch && cmd.status !== 'cancelled') {
+              const amt = Number(cmd.totalFCFA || 0);
+              total += amt;
+            }
+          });
+        }
+      }
+    } catch (e) {}
+
+    // 4. Check in optic_accounting_revenues
+    try {
+      const savedRevenues = localStorage.getItem('optic_accounting_revenues');
+      if (savedRevenues) {
+        const revs = JSON.parse(savedRevenues);
+        if (Array.isArray(revs)) {
+          revs.forEach((r: any) => {
+            const matchesBranch = 
+              r.branch_id === branch.id || 
+              (r.boutique && (
+                r.boutique.toLowerCase().includes(branch.city.toLowerCase()) ||
+                r.boutique.toLowerCase().includes(branch.name.toLowerCase())
+              ));
+            if (matchesBranch) {
+              const amt = Number(r.amount || r.montant || 0);
+              total += amt;
+            }
+          });
+        }
+      }
+    } catch (e) {}
+
+    return total;
+  };
+
+  const getRealTransactionCountForBranch = (branch: Branch) => {
+    let count = 0;
+
+    // 1. hq sales
+    count += sales.filter(s => s.branch_id === branch.id).length;
+
+    // 2. saas orders
+    for (let i = 0; i < localStorage.getLength(); i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('optic_saas_orders_')) {
+        try {
+          const dataStr = localStorage.getItem(key);
+          if (dataStr) {
+            const orders = JSON.parse(dataStr);
+            if (Array.isArray(orders)) {
+              orders.forEach((ord: any) => {
+                const matchesBranch = 
+                  (ord.shop && (
+                    ord.shop.toLowerCase().includes(branch.city.toLowerCase()) || 
+                    ord.shop.toLowerCase().includes(branch.name.toLowerCase()) ||
+                    branch.name.toLowerCase().includes(ord.shop.toLowerCase())
+                  )) ||
+                  key.toLowerCase().includes(branch.city.toLowerCase()) ||
+                  key.toLowerCase().includes(branch.name.toLowerCase());
+                  
+                if (matchesBranch && ord.status !== 'cancelled' && ord.status !== 'Cancelled') {
+                  count++;
+                }
+              });
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 3. my commandes
+    try {
+      const savedCmds = localStorage.getItem('optic_my_commandes');
+      if (savedCmds) {
+        const cmds = JSON.parse(savedCmds);
+        if (Array.isArray(cmds)) {
+          cmds.forEach((cmd: any) => {
+            const matchesBranch = 
+              (cmd.branch && (
+                cmd.branch.toLowerCase().includes(branch.city.toLowerCase()) ||
+                cmd.branch.toLowerCase().includes(branch.name.toLowerCase())
+              )) ||
+              (cmd.clientBranch && (
+                cmd.clientBranch.toLowerCase().includes(branch.city.toLowerCase()) ||
+                cmd.clientBranch.toLowerCase().includes(branch.name.toLowerCase())
+              ));
+              
+            if (matchesBranch && cmd.status !== 'cancelled') {
+              count++;
+            }
+          });
+        }
+      }
+    } catch (e) {}
+
+    return count;
+  };
+
   // 1. Chiffre d'affaires global (sales list consolidated in FCFA)
-  const totalConsolidatedTurnoverFCFA = sales.reduce((acc, sale) => {
+  const totalConsolidatedTurnoverFCFA = branches.reduce((acc, b) => {
+    return acc + getRealTurnoverForBranch(b);
+  }, 0) || sales.reduce((acc, sale) => {
     return acc + eurToFcfa(sale.amount, sale.currency);
   }, 0);
 
@@ -1024,7 +1258,60 @@ export default function SuperAdminHQModule({
   const workforceCount = employees.length;
 
   // 5. Nombre total de clients uniques
-  const totalClientCount = new Set(sales.map(s => s.customerName)).size + 142; // Unique customers in sales + base database catalog
+  let totalClientCount = 0;
+  try {
+    const uniquePatients = new Set<string>();
+    
+    // 1. CRM customers
+    const savedCrm = localStorage.getItem('optic_crm_customers');
+    if (savedCrm) {
+      const parsed = JSON.parse(savedCrm);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((c: any) => {
+          if (c.firstName || c.lastName) {
+            uniquePatients.add(`${c.firstName} ${c.lastName}`.trim().toLowerCase());
+          } else if (c.name) {
+            uniquePatients.add(String(c.name).trim().toLowerCase());
+          }
+        });
+      }
+    }
+    
+    // 2. Clinic exams patients
+    const savedExams = localStorage.getItem('optic_my_clinic_exams');
+    if (savedExams) {
+      const parsed = JSON.parse(savedExams);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((ex: any) => {
+          if (ex.patientName) uniquePatients.add(String(ex.patientName).trim().toLowerCase());
+        });
+      }
+    }
+
+    // 3. SaaS POS orders customers
+    const savedOrders = localStorage.getItem('optic_saas_orders');
+    if (savedOrders) {
+      const parsed = JSON.parse(savedOrders);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((ord: any) => {
+          if (ord.customer) uniquePatients.add(String(ord.customer).trim().toLowerCase());
+        });
+      }
+    }
+
+    // 4. HQ Consolidated sales customers
+    sales.forEach((s: any) => {
+      if (s.customerName) uniquePatients.add(String(s.customerName).trim().toLowerCase());
+    });
+
+    totalClientCount = uniquePatients.size;
+  } catch (e) {
+    console.error("Error computing totalClientCount:", e);
+  }
+
+  if (totalClientCount === 0) {
+    totalClientCount = new Set(sales.map(s => s.customerName)).size;
+  }
 
   // 6. Ventes du jour (Today's date is 2026-06-13 based on local clock)
   const todayDateString = '2026-06-13';
@@ -1038,10 +1325,8 @@ export default function SuperAdminHQModule({
 
   // 8. Classement des boutiques par chiffre d'affaires consolidé
   const topBranchesRanking = branches.map(b => {
-    const totalBranchRevenueFCFA = sales
-      .filter(s => s.branch_id === b.id)
-      .reduce((sum, s) => sum + eurToFcfa(s.amount, s.currency), 0);
-    const count = sales.filter(s => s.branch_id === b.id).length;
+    const totalBranchRevenueFCFA = getRealTurnoverForBranch(b);
+    const count = getRealTransactionCountForBranch(b);
     return {
       ...b,
       revenueFCFA: totalBranchRevenueFCFA,
@@ -1999,7 +2284,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase font-black tracking-widest text-blue-100/90 block">Chiffre d'Affaires Canaux</span>
-                  <div className="text-xl font-black font-mono leading-none">{totalConsolidatedTurnoverFCFA.toLocaleString()} FCFA</div>
+                  <div className="text-xl font-black font-mono leading-none">{formatVal(totalConsolidatedTurnoverFCFA)} FCFA</div>
                 </div>
                 <div className="p-2.5 bg-white/10 text-white rounded-xl">
                   <TrendingUp className="w-5 h-5 animate-pulse" />
@@ -2007,7 +2292,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
               </div>
               <div className="pt-4 border-t border-white/10 flex justify-between items-center">
                 <span className="text-[10px] text-blue-100/70 font-mono">
-                  Soit ~{(totalConsolidatedTurnoverFCFA / 655.957).toLocaleString(undefined, { maximumFractionDigits: 0 })} € parité fixe
+                  Soit ~{formatVal(totalConsolidatedTurnoverFCFA / 655.957)} € parité fixe
                 </span>
                 <span className="text-[9px] font-bold bg-white/20 text-white px-1.5 py-0.5 rounded-md flex items-center gap-1">
                   +12.4% vs 2025
@@ -2021,7 +2306,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase font-extrabold text-slate-400 tracking-wider block">Bénéfice Net Global</span>
-                  <div className="text-xl font-black text-slate-800 font-mono leading-none">{totalProfitFCFA.toLocaleString()} FCFA</div>
+                  <div className="text-xl font-black text-slate-800 font-mono leading-none">{formatVal(totalProfitFCFA)} FCFA</div>
                 </div>
                 <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
                   <Award className="w-5 h-5" />
@@ -2029,7 +2314,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
               </div>
               <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
                 <span className="text-[10px] text-slate-500 font-semibold">
-                  Marge brute moyenne : <strong className="text-emerald-600">{( (totalProfitFCFA / totalConsolidatedTurnoverFCFA)*100 ).toFixed(1)}%</strong>
+                  Marge brute moyenne : <strong className="text-emerald-600">{( (totalProfitFCFA / (totalConsolidatedTurnoverFCFA || 1))*100 ).toFixed(1)}%</strong>
                 </span>
                 <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md">
                   Optimisé
@@ -2043,7 +2328,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase font-extrabold text-slate-400 tracking-wider block">Dépenses Cumulées Réseau</span>
-                  <div className="text-xl font-black text-slate-800 font-mono leading-none">{totalExpensesFCFA.toLocaleString()} FCFA</div>
+                  <div className="text-xl font-black text-slate-800 font-mono leading-none">{formatVal(totalExpensesFCFA)} FCFA</div>
                 </div>
                 <div className="p-2.5 bg-rose-50 text-rose-500 rounded-xl">
                   <TrendingDown className="w-5 h-5" />
@@ -2063,7 +2348,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase font-extrabold text-slate-400 tracking-wider block">Ventes du Jour (13 Juin)</span>
-                  <div className="text-xl font-black text-blue-600 font-mono leading-none">{salesTodayVolumeFCFA.toLocaleString()} FCFA</div>
+                  <div className="text-xl font-black text-blue-600 font-mono leading-none">{formatVal(salesTodayVolumeFCFA)} FCFA</div>
                 </div>
                 <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
                   <Activity className="w-5 h-5 animate-pulse" />
@@ -2087,7 +2372,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase font-extrabold text-slate-400 tracking-wider block">Commandes en attente Labo</span>
-                  <div className="text-xl font-black text-amber-700 font-mono leading-none">{pendingOrdersVolumeFCFA.toLocaleString()} FCFA</div>
+                  <div className="text-xl font-black text-amber-700 font-mono leading-none">{formatVal(pendingOrdersVolumeFCFA)} FCFA</div>
                 </div>
                 <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
                   <Package className="w-5 h-5" />
@@ -2608,6 +2893,7 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
                       <th className="p-4">{currentLanguage === 'FR' ? 'Code & Nom de l\'Agence' : 'Agency Name & Code'}</th>
                       <th className="p-4">{currentLanguage === 'FR' ? 'Localisation' : 'Location'}</th>
                       <th className="p-4">{currentLanguage === 'FR' ? 'Contact' : 'Contact'}</th>
+                      <th className="p-4 text-right">{currentLanguage === 'FR' ? 'Chiffre d\'Affaires' : 'Turnover'}</th>
                       <th className="p-4">{currentLanguage === 'FR' ? 'Modules Activés' : 'Active Modules'}</th>
                       <th className="p-4 text-center">{currentLanguage === 'FR' ? 'Statut' : 'Status'}</th>
                       <th className="p-4 text-right">{currentLanguage === 'FR' ? 'Actions' : 'Actions'}</th>
@@ -2654,10 +2940,21 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
                               <span className="text-slate-705 font-medium">{b.phone}</span>
                               <span className="text-slate-400 block font-mono text-[10px] lowercase truncate max-w-[140px]">{b.email}</span>
                             </td>
+                            <td className="p-4 text-right font-bold font-mono text-slate-800">
+                              <div>{(getRealTurnoverForBranch(b)).toLocaleString()} FCFA</div>
+                              <span className="text-[9px] text-slate-400 block font-mono font-medium">{getRealTransactionCountForBranch(b)} transactions</span>
+                            </td>
                             <td className="p-4">
                               <div className="flex flex-wrap gap-1 max-w-[190px]">
                                 {(() => {
-                                  const activeM = branchModules.filter(bm => bm.branch_id === b.id && bm.is_enabled);
+                                  const rawActiveM = branchModules.filter(bm => bm.branch_id === b.id && bm.is_enabled);
+                                  const seenIds = new Set<string>();
+                                  const activeM = rawActiveM.filter(bm => {
+                                    if (!bm || !bm.id) return false;
+                                    if (seenIds.has(bm.id)) return false;
+                                    seenIds.add(bm.id);
+                                    return true;
+                                  });
                                   if (activeM.length === 0) {
                                     return <span className="text-[8px] text-rose-500 font-bold bg-rose-50 px-1 py-0.5 rounded border border-rose-200">Aucun</span>;
                                   }
@@ -2829,10 +3126,10 @@ CREATE INDEX IF NOT EXISTS idx_branch_modules_branch ON branch_modules(branch_id
                         </td>
                         <td className="p-4">{s.customerName}</td>
                         <td className="p-4 text-right font-bold text-slate-900">
-                          {s.amount.toLocaleString()} {s.currency}
+                          {formatVal(s.amount)} {s.currency}
                         </td>
                         <td className="p-4 text-right font-bold text-emerald-700 font-mono">
-                          {eurToFcfa(s.amount, s.currency).toLocaleString()} FCFA
+                          {formatVal(eurToFcfa(s.amount, s.currency))} FCFA
                         </td>
                         <td className="p-4 font-mono text-[11px] text-slate-500">{s.date}</td>
                         <td className="p-4">

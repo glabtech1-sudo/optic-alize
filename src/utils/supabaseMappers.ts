@@ -4,6 +4,15 @@
  * Keeps business data fully typed and structured according to supabase_migration.sql schemas.
  */
 
+import { safeLocalStorage } from '../lib/supabaseSync';
+
+function getSafeBoutiqueName(): string {
+  try {
+    return safeLocalStorage.getItem('optic_boutique_name') || 'Global';
+  } catch (e) {}
+  return 'Global';
+}
+
 // RH (HR) Module Mappers
 export function mapEmployeeToSupabase(emp: any) {
   if (!emp) return null;
@@ -110,7 +119,7 @@ export function mapPayslipToSupabase(pay: any) {
 // CRM, Stock, POS, Clinic, HQ, and Users Mappers
 export function mapCustomerToSupabase(customer: any, boutiqueName?: string) {
   if (!customer) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(customer.id || customer.email || `cust-${Date.now()}`),
     boutique_name: bName,
@@ -121,7 +130,7 @@ export function mapCustomerToSupabase(customer: any, boutiqueName?: string) {
 
 export function mapProductToSupabase(product: any, boutiqueName?: string) {
   if (!product) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(product.id || `prod-${Date.now()}`),
     boutique_name: bName,
@@ -132,7 +141,7 @@ export function mapProductToSupabase(product: any, boutiqueName?: string) {
 
 export function mapOrderToSupabase(order: any, boutiqueName?: string) {
   if (!order) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(order.id || `ord-${Date.now()}`),
     boutique_name: bName,
@@ -143,7 +152,7 @@ export function mapOrderToSupabase(order: any, boutiqueName?: string) {
 
 export function mapAuditLogToSupabase(log: any, boutiqueName?: string) {
   if (!log) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(log.id || `log-${Date.now()}`),
     boutique_name: bName,
@@ -154,7 +163,7 @@ export function mapAuditLogToSupabase(log: any, boutiqueName?: string) {
 
 export function mapAppointmentToSupabase(appt: any, boutiqueName?: string) {
   if (!appt) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(appt.id || `appt-${Date.now()}`),
     boutique_name: bName,
@@ -165,7 +174,7 @@ export function mapAppointmentToSupabase(appt: any, boutiqueName?: string) {
 
 export function mapSightExamToSupabase(exam: any, boutiqueName?: string) {
   if (!exam) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(exam.id || `exam-${Date.now()}`),
     boutique_name: bName,
@@ -176,7 +185,7 @@ export function mapSightExamToSupabase(exam: any, boutiqueName?: string) {
 
 export function mapPrescriptionToSupabase(pres: any, boutiqueName?: string) {
   if (!pres) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(pres.id || `pres-${Date.now()}`),
     boutique_name: bName,
@@ -187,7 +196,7 @@ export function mapPrescriptionToSupabase(pres: any, boutiqueName?: string) {
 
 export function mapCompanyToSupabase(company: any, boutiqueName?: string) {
   if (!company) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(company.id || `comp-${Date.now()}`),
     boutique_name: bName,
@@ -198,7 +207,7 @@ export function mapCompanyToSupabase(company: any, boutiqueName?: string) {
 
 export function mapBranchToSupabase(branch: any, boutiqueName?: string) {
   if (!branch) return null;
-  const bName = boutiqueName || (typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global');
+  const bName = boutiqueName || getSafeBoutiqueName();
   return {
     id: String(branch.id || `branch-${Date.now()}`),
     boutique_name: bName,

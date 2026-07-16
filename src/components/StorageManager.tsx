@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FolderOpen, Upload, Lock, Globe, Trash2, Download, AlertCircle, CheckCircle2, Shield, File, FileText, Image, RefreshCw, Layers, Database, HardDrive, Info } from 'lucide-react';
+import { safeLocalStorage } from '../lib/supabaseSync';
 
 interface StorageManagerProps {
   currentLanguage?: 'FR' | 'EN';
@@ -35,7 +36,7 @@ export default function StorageManager({ currentLanguage = 'FR', darkMode = fals
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('optic_access_token');
+      const token = safeLocalStorage.getItem('optic_access_token');
       const response = await fetch('/api/storage/files', {
         headers: {
           'Authorization': token ? `Bearer ${token}` : ''
@@ -81,7 +82,7 @@ export default function StorageManager({ currentLanguage = 'FR', darkMode = fals
           // Extract pure Base64 content from DataURL
           const base64Data = result.split(',')[1];
 
-          const token = localStorage.getItem('optic_access_token');
+          const token = safeLocalStorage.getItem('optic_access_token');
           const response = await fetch('/api/storage/upload', {
             method: 'POST',
             headers: {
@@ -158,7 +159,7 @@ export default function StorageManager({ currentLanguage = 'FR', darkMode = fals
     try {
       setError(null);
       setSuccess(null);
-      const token = localStorage.getItem('optic_access_token');
+      const token = safeLocalStorage.getItem('optic_access_token');
       const response = await fetch(`/api/storage/files/${fileId}`, {
         method: 'DELETE',
         headers: {

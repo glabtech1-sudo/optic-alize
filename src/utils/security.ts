@@ -4,6 +4,7 @@
  */
 
 import CryptoJS from 'crypto-js';
+import { safeLocalStorage } from '../lib/supabaseSync';
 
 // Cryptographically robust symmetric key for Optic Alizé client-side cache shield
 const SECURITY_AES_KEY = "OPTICALIZE_SECURE_AES_256_KEY_2026_x89!";
@@ -105,21 +106,21 @@ export const secureLRSStorage = {
   setItem: (key: string, value: string): void => {
     try {
       const encrypted = encryptLRSData(value);
-      localStorage.setItem(key, encrypted);
+      safeLocalStorage.setItem(key, encrypted);
     } catch (e) {
       console.error(`SecureLRS write error for key ${key}:`, e);
-      localStorage.setItem(key, value); // Fallback
+      safeLocalStorage.setItem(key, value); // Fallback
     }
   },
 
   getItem: (key: string): { data: string | null; compromised: boolean } => {
     try {
-      const stored = localStorage.getItem(key);
+      const stored = safeLocalStorage.getItem(key);
       if (!stored) return { data: null, compromised: false };
       return decryptLRSData(stored);
     } catch (e) {
       console.error(`SecureLRS read error for key ${key}:`, e);
-      return { data: localStorage.getItem(key), compromised: false };
+      return { data: safeLocalStorage.getItem(key), compromised: false };
     }
   }
 };

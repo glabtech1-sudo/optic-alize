@@ -34,7 +34,8 @@ async function startServer() {
     },
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
-    crossOriginResourcePolicy: false
+    crossOriginResourcePolicy: false,
+    frameguard: false
   }));
 
   // 2. CORS Setup

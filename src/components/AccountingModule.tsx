@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { safeLocalStorage as localStorage, globalMemoryStore, syncCollectionToSupabase, loadCollectionFromSupabase } from '../lib/supabaseSync';
 import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   Building2, 
@@ -100,19 +101,12 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map(b => ({
             ...b,
-            name: b.name.replace(/Boutique/g, 'Agence')
+            name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
           }));
         }
       }
     } catch (e) {}
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-    return [
-      { id: 'bt-dakar', name: 'Agence Alpha', country: 'Zone Ouest', currency: 'FCFA' },
-      { id: 'bt-abidjan', name: 'Agence Bêta', country: 'Zone Ouest', currency: 'FCFA' },
-      { id: 'bt-lome', name: 'Agence Gamma', country: 'Zone Ouest', currency: 'FCFA' }
-    ];
+    return [];
   });
 
   const [selectedAccountingBoutique, setSelectedAccountingBoutique] = useState<string>(() => {
@@ -133,8 +127,8 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
   // --- UNROLLED MULTI-BOUTIQUES TREASURY ---
   const [boutiqueBalances, setBoutiqueBalances] = useState<any[]>(() => {
     try {
-      const savedBranches = localStorage.getItem('optic_hq_branches');
-      const savedBalances = localStorage.getItem('optic_accounting_boutique_balances');
+      const savedBranches = globalMemoryStore['optic_hq_branches'] || localStorage.getItem('optic_hq_branches');
+      const savedBalances = globalMemoryStore['optic_accounting_boutique_balances'];
       let branchesList = [];
       if (savedBranches) {
         const parsed = JSON.parse(savedBranches);
@@ -148,11 +142,11 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
             if (Array.isArray(parsedBalances)) existingBalances = parsedBalances;
           } catch (e) {}
         }
-        return branchesList.map(b => {
-          const ex = existingBalances.find(eb => eb.id === b.id);
-          return {
-            id: b.id,
-            name: b.name.replace(/Boutique/g, 'Agence'),
+          return branchesList.map(b => {
+            const ex = existingBalances.find(eb => eb.id === b.id);
+            return {
+              id: b.id,
+              name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : '',
             country: b.zone_id === 'ZONE-UEMOA' ? 'Zone Ouest' : b.zone_id === 'ZONE-CEMAC' ? 'Zone Centrale' : 'Zone Nord',
             cash: ex ? ex.cash : 154000,
             bank: ex ? ex.bank : 3420000,
@@ -164,34 +158,32 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
       }
     } catch (e) {}
 
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-
-    return [
-      { id: 'bt-dakar', name: 'Agence Alpha', country: 'Zone Ouest', cash: 154000, bank: 3420000, momo: 480000, profit: 890000, currency: 'FCFA' },
-      { id: 'bt-abidjan', name: 'Agence Bêta', country: 'Zone Ouest', cash: 125000, bank: 2180000, momo: 320000, profit: 640000, currency: 'FCFA' },
-      { id: 'bt-lome', name: 'Agence Gamma', country: 'Zone Ouest', cash: 95000, bank: 1650000, momo: 210000, profit: 450000, currency: 'FCFA' }
-    ];
+    return [];
   });
 
   React.useEffect(() => {
-    localStorage.setItem('optic_accounting_boutique_balances', JSON.stringify(boutiqueBalances));
+    const serialized = JSON.stringify(boutiqueBalances);
+    globalMemoryStore['optic_accounting_boutique_balances'] = serialized;
+    syncCollectionToSupabase('optic_accounting_boutique_balances', serialized).catch(() => {});
   }, [boutiqueBalances]);
 
   React.useEffect(() => {
     const handleSync = () => {
       try {
-        const savedBranches = localStorage.getItem('optic_hq_branches');
+        const savedBranches = globalMemoryStore['optic_hq_branches'] || localStorage.getItem('optic_hq_branches');
         if (savedBranches) {
           const parsed = JSON.parse(savedBranches);
           if (Array.isArray(parsed)) {
-            setLocalBranches(parsed.map(b => ({
+            const updatedBranches = parsed.map(b => ({
               ...b,
-              name: b.name.replace(/Boutique/g, 'Agence')
-            })));
+              name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
+            }));
+            setLocalBranches(prev => {
+              const hasChanged = JSON.stringify(prev) !== JSON.stringify(updatedBranches);
+              return hasChanged ? updatedBranches : prev;
+            });
             
-            const savedBalances = localStorage.getItem('optic_accounting_boutique_balances');
+            const savedBalances = globalMemoryStore['optic_accounting_boutique_balances'];
             let existingBalances = [];
             if (savedBalances) {
               try {
@@ -203,7 +195,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
               const ex = existingBalances.find(eb => eb.id === b.id);
               return {
                 id: b.id,
-                name: b.name.replace(/Boutique/g, 'Agence'),
+                name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : '',
                 country: b.zone_id === 'ZONE-UEMOA' ? 'Zone Ouest' : b.zone_id === 'ZONE-CEMAC' ? 'Zone Centrale' : 'Zone Nord',
                 cash: ex ? ex.cash : 154000,
                 bank: ex ? ex.bank : 3420000,
@@ -212,11 +204,14 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
                 currency: b.currency || 'FCFA'
               };
             });
-            setBoutiqueBalances(updated);
+            setBoutiqueBalances(prev => {
+              const hasChanged = JSON.stringify(prev) !== JSON.stringify(updated);
+              return hasChanged ? updated : prev;
+            });
           }
         } else if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-          setLocalBranches([]);
-          setBoutiqueBalances([]);
+          setLocalBranches(prev => prev.length > 0 ? [] : prev);
+          setBoutiqueBalances(prev => prev.length > 0 ? [] : prev);
         }
       } catch (e) {}
     };
@@ -270,7 +265,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
   // --- INITIAL DATA ---
   const [revenues, setRevenues] = useState<Revenue[]>(() => {
     try {
-      const saved = localStorage.getItem('optic_accounting_revenues');
+      const saved = globalMemoryStore['optic_accounting_revenues'];
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return [];
@@ -278,7 +273,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
     try {
-      const saved = localStorage.getItem('optic_accounting_expenses');
+      const saved = globalMemoryStore['optic_accounting_expenses'];
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return [];
@@ -286,7 +281,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
 
   const [cashSessions, setCashSessions] = useState<CashRegisterSession[]>(() => {
     try {
-      const saved = localStorage.getItem('optic_accounting_sessions');
+      const saved = globalMemoryStore['optic_accounting_sessions'];
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return [];
@@ -294,7 +289,7 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
 
   const [momoTransactions, setMomoTransactions] = useState<MobileMoneyTransaction[]>(() => {
     try {
-      const saved = localStorage.getItem('optic_accounting_momo');
+      const saved = globalMemoryStore['optic_accounting_momo'];
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return [];
@@ -323,34 +318,73 @@ export default function AccountingModule({ onAddGeneratedFiles, currentLanguage 
 
   const [payslips, setPayslips] = useState<Payslip[]>(() => {
     try {
-      const saved = localStorage.getItem('optic_payslips');
+      const saved = globalMemoryStore['optic_payslips'];
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return [];
   });
 
-  // Keep synced with localStorage
+  // Keep synced with globalMemoryStore/Supabase
   const syncPayslips = (updatedPayslips: Payslip[]) => {
     setPayslips(updatedPayslips);
-    localStorage.setItem('optic_payslips', JSON.stringify(updatedPayslips));
+    const serialized = JSON.stringify(updatedPayslips);
+    globalMemoryStore['optic_payslips'] = serialized;
+    syncCollectionToSupabase('optic_payslips', serialized).catch(() => {});
   };
 
-  // Sync state changes to localStorage
+  // Sync state changes to globalMemoryStore/Supabase
   React.useEffect(() => {
-    localStorage.setItem('optic_accounting_revenues', JSON.stringify(revenues));
+    const serialized = JSON.stringify(revenues);
+    globalMemoryStore['optic_accounting_revenues'] = serialized;
+    syncCollectionToSupabase('optic_accounting_revenues', serialized).catch(() => {});
   }, [revenues]);
 
   React.useEffect(() => {
-    localStorage.setItem('optic_accounting_expenses', JSON.stringify(expenses));
+    const serialized = JSON.stringify(expenses);
+    globalMemoryStore['optic_accounting_expenses'] = serialized;
+    syncCollectionToSupabase('optic_accounting_expenses', serialized).catch(() => {});
   }, [expenses]);
 
   React.useEffect(() => {
-    localStorage.setItem('optic_accounting_sessions', JSON.stringify(cashSessions));
+    const serialized = JSON.stringify(cashSessions);
+    globalMemoryStore['optic_accounting_sessions'] = serialized;
+    syncCollectionToSupabase('optic_accounting_sessions', serialized).catch(() => {});
   }, [cashSessions]);
 
   React.useEffect(() => {
-    localStorage.setItem('optic_accounting_momo', JSON.stringify(momoTransactions));
+    const serialized = JSON.stringify(momoTransactions);
+    globalMemoryStore['optic_accounting_momo'] = serialized;
+    syncCollectionToSupabase('optic_accounting_momo', serialized).catch(() => {});
   }, [momoTransactions]);
+
+  React.useEffect(() => {
+    let active = true;
+    const loadData = async () => {
+      try {
+        const keys = [
+          { key: 'optic_accounting_revenues', setter: setRevenues },
+          { key: 'optic_accounting_expenses', setter: setExpenses },
+          { key: 'optic_accounting_sessions', setter: setCashSessions },
+          { key: 'optic_accounting_momo', setter: setMomoTransactions },
+          { key: 'optic_payslips', setter: setPayslips },
+          { key: 'optic_accounting_boutique_balances', setter: setBoutiqueBalances }
+        ];
+        for (const item of keys) {
+          const dbData = await loadCollectionFromSupabase(item.key);
+          if (dbData && active) {
+            const parsed = typeof dbData === 'string' ? JSON.parse(dbData) : dbData;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              item.setter(parsed);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[AccountingModule] Direct Supabase fetch failed:', e);
+      }
+    };
+    loadData();
+    return () => { active = false; };
+  }, []);
 
   // --- DERIVED METRICS ---
   const totalRevenues = useMemo(() => revenues.reduce((sum, r) => sum + r.total, 0), [revenues]);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { 
   Camera, CheckCircle, Clock, MapPin, Sparkles, AlertCircle, 
   Smartphone, User, Search, RefreshCw, Eye, EyeOff, ShieldCheck, 
@@ -140,7 +141,7 @@ export default function PresenceModule({ currentLanguage, currentCompany, curren
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.map((b: any) => ({ id: b.id, name: b.name }));
+            return parsed.filter((b: any) => b && typeof b === 'object').map((b: any) => ({ id: b.id || '', name: b.name || '' })).filter((b: any) => b.id);
           }
         } catch (e) {}
       }

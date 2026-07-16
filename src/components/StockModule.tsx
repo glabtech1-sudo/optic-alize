@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { safeLocalStorage as localStorage, globalMemoryStore, syncCollectionToSupabase, loadCollectionFromSupabase } from '../lib/supabaseSync';
 import { 
   Package, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, ClipboardList, RotateCcw,
   Search, Plus, Printer, AlertTriangle, QrCode, Barcode, CheckCircle2, 
@@ -65,7 +66,7 @@ const BOTIQUE_OPTIONS = [
 
 export default function StockModule() {
   const [stockItems, setStockItems] = useState<StockItem[]>(() => {
-    const saved = localStorage.getItem('optic_stock_items');
+    const saved = globalMemoryStore['optic_stock_items'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -75,7 +76,7 @@ export default function StockModule() {
     return [];
   });
   const [historyEvents, setHistoryEvents] = useState<StockHistoryEvent[]>(() => {
-    const saved = localStorage.getItem('optic_stock_history');
+    const saved = globalMemoryStore['optic_stock_history'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -86,12 +87,43 @@ export default function StockModule() {
   });
 
   React.useEffect(() => {
-    localStorage.setItem('optic_stock_items', JSON.stringify(stockItems));
+    const serialized = JSON.stringify(stockItems);
+    globalMemoryStore['optic_stock_items'] = serialized;
+    syncCollectionToSupabase('optic_stock_items', serialized).catch(() => {});
   }, [stockItems]);
 
   React.useEffect(() => {
-    localStorage.setItem('optic_stock_history', JSON.stringify(historyEvents));
+    const serialized = JSON.stringify(historyEvents);
+    globalMemoryStore['optic_stock_history'] = serialized;
+    syncCollectionToSupabase('optic_stock_history', serialized).catch(() => {});
   }, [historyEvents]);
+
+  React.useEffect(() => {
+    let active = true;
+    const loadData = async () => {
+      try {
+        const dbItems = await loadCollectionFromSupabase('optic_stock_items');
+        if (dbItems && active) {
+          const parsed = typeof dbItems === 'string' ? JSON.parse(dbItems) : dbItems;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setStockItems(parsed);
+          }
+        }
+        const dbHistory = await loadCollectionFromSupabase('optic_stock_history');
+        if (dbHistory && active) {
+          const parsed = typeof dbHistory === 'string' ? JSON.parse(dbHistory) : dbHistory;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setHistoryEvents(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('[StockModule] Direct Supabase fetch failed, using local caching:', e);
+      }
+    };
+    loadData();
+    return () => { active = false; };
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'All' | 'Monture' | 'Verre' | 'Accessoire'>('All');
   const [stockFilter, setStockFilter] = useState<'All' | 'Low' | 'Rupture'>('All');

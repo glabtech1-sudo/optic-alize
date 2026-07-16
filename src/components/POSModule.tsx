@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   CreditCard, Search, Percent, ShieldCheck, QrCode, Ticket, Check, Sparkles, 
@@ -79,7 +80,7 @@ export default function POSModule() {
   useEffect(() => {
     const handleSync = () => {
       if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-        setPosProducts([]);
+        setPosProducts(prev => prev.length > 0 ? [] : prev);
         return;
       }
       const saved = localStorage.getItem('optic_pos_products');
@@ -87,11 +88,17 @@ export default function POSModule() {
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            setPosProducts(parsed);
+            setPosProducts(prev => {
+              const hasChanged = JSON.stringify(prev) !== JSON.stringify(parsed);
+              return hasChanged ? parsed : prev;
+            });
           }
         } catch (e) {}
       } else {
-        setPosProducts(PRESET_PRODUCTS_DEFAULT);
+        setPosProducts(prev => {
+          const hasChanged = JSON.stringify(prev) !== JSON.stringify(PRESET_PRODUCTS_DEFAULT);
+          return hasChanged ? PRESET_PRODUCTS_DEFAULT : prev;
+        });
       }
     };
     window.addEventListener('storage', handleSync);
@@ -110,7 +117,7 @@ export default function POSModule() {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<'All' | 'Monture' | 'Verre' | 'Accessoire'>('All');
+  const [selectedCategory, setSelectedCategory] = useState<'All' | 'Monture' | 'Verre' | 'Accessoire' | 'Commande Optic'>('All');
   
   // Cart level pricing adjustment
   const [cartDiscount, setCartDiscount] = useState<number>(0); // Global discount percentage
@@ -142,8 +149,8 @@ export default function POSModule() {
     
     // Default fallback presets to ensure nice data selection on first load
     const presets = [
-      { name: 'Hélène Dubois-Chambery', id: 'PRES-4001' },
-      { name: 'Jean-Pierre Gomez-Viguier', id: 'PRES-4002' },
+      { name: 'Sophie Martin', id: 'PRES-4001' },
+      { name: 'Alassane Koné', id: 'PRES-4002' },
       { name: 'Khadija Sy', id: 'EXAM-301' },
       { name: 'Mamadou Diop', id: 'EXAM-302' }
     ];
@@ -185,8 +192,32 @@ export default function POSModule() {
   
   // Storage synchronize listener for incoming orders from the Commande/Atelier module
   const [incomingOrder, setIncomingOrder] = useState<any | null>(null);
+  const [opticCommandes, setOpticCommandes] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('optic_my_commandes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
 
   useEffect(() => {
+    const syncCommandes = () => {
+      try {
+        const saved = localStorage.getItem('optic_my_commandes');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setOpticCommandes(parsed);
+            return;
+          }
+        }
+      } catch (e) {}
+      setOpticCommandes([]);
+    };
+
     const checkIncoming = () => {
       const raw = localStorage.getItem('pending_optic_pos_order');
       if (raw) {
@@ -200,10 +231,12 @@ export default function POSModule() {
       }
     };
 
+    syncCommandes();
     checkIncoming();
 
     // Attach listener for storage updates (cross tabs/local action)
     const handleStorageChange = () => {
+      syncCommandes();
       checkIncoming();
     };
 
@@ -215,6 +248,52 @@ export default function POSModule() {
       window.removeEventListener('optic-pos-incoming-order' as any, handleStorageChange);
     };
   }, []);
+
+  const handleImportOpticOrder = (cmd: any) => {
+    if (!cmd) return;
+    
+    // Create custom virtual product representation of the order
+    const importedProd: POSProduct = {
+      id: cmd.id,
+      name: `Commande Optic : ${cmd.frameModel} + ${cmd.lensesType}`,
+      brand: 'Atelier Optic Alizé',
+      category: 'Monture',
+      price: cmd.totalFCFA,
+      tva: 18,
+      stock: 1,
+      barcode: cmd.id,
+      imageColor: 'bg-indigo-950'
+    };
+
+    // Load into the register basket
+    setCart([{
+      product: importedProd,
+      qty: 1,
+      discountPercent: 0,
+      eyeSide: 'BOTH'
+    }]);
+
+    // Apply the pre-paid deposit from laboratory registration
+    if (cmd.amountPaid > 0) {
+      setPayments([
+        {
+          method: 'espèces',
+          amount: cmd.amountPaid,
+          reference: `ACOMPTE ${cmd.id}`
+        }
+      ]);
+      setTotalPaidSoFar(cmd.amountPaid);
+    } else {
+      setPayments([]);
+      setTotalPaidSoFar(0);
+    }
+
+    if (cmd.customer) {
+      setAttachedPatient(cmd.customer);
+    }
+
+    triggerToast(`Commande ${cmd.id} (${cmd.customer}) chargée en caisse ! Solde restant : ${formatCFA(cmd.totalFCFA - cmd.amountPaid)}`, 'success');
+  };
 
   const handleImportIncomingOrder = () => {
     if (!incomingOrder) return;
@@ -868,7 +947,7 @@ export default function POSModule() {
             
             {/* Categories filter tabs */}
             <div className="flex gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
-              {(['All', 'Monture', 'Verre', 'Accessoire'] as const).map((cat) => (
+              {(['All', 'Monture', 'Verre', 'Accessoire', 'Commande Optic'] as const).map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
@@ -878,7 +957,15 @@ export default function POSModule() {
                       : 'text-slate-550 hover:text-slate-850'
                   }`}
                 >
-                  {cat === 'All' ? 'Tous' : cat === 'Monture' ? 'Montures' : cat === 'Verre' ? 'Verres optiques' : 'Accessoires'}
+                  {cat === 'All' 
+                    ? 'Tous' 
+                    : cat === 'Monture' 
+                      ? 'Montures' 
+                      : cat === 'Verre' 
+                        ? 'Verres optiques' 
+                        : cat === 'Accessoire'
+                          ? 'Accessoires'
+                          : 'Commandes Optic d\'Atelier'}
                 </button>
               ))}
             </div>
@@ -915,7 +1002,59 @@ export default function POSModule() {
 
           {/* Product Cards Grid with visual depth */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 h-[340px] overflow-y-auto pr-1">
-            {filteredProducts.length === 0 ? (
+            {selectedCategory === 'Commande Optic' ? (
+              opticCommandes.length === 0 ? (
+                <div className="col-span-full flex flex-col items-center justify-center py-12 text-slate-400 font-mono gap-3 border-2 border-dashed border-slate-150 rounded-2xl bg-slate-50/20">
+                  <FileCheck className="w-8 h-8 text-[#0097A7]/80" />
+                  <div className="text-center">
+                    <span className="text-xs font-semibold block text-slate-700">Aucune commande atelier en attente</span>
+                    <span className="text-[10px] text-slate-400 block mt-1">Créez des commandes dans le module Commande Optic</span>
+                  </div>
+                </div>
+              ) : (
+                opticCommandes.map((cmd) => (
+                  <div 
+                    key={cmd.id}
+                    className="bg-indigo-50/20 rounded-xl border border-indigo-100/80 p-3.5 flex flex-col justify-between hover:border-indigo-200 hover:bg-indigo-50/40 transition shadow-xs group relative text-left"
+                  >
+                    <div className="flex justify-between items-start gap-2 mb-2">
+                      <span className="px-2 py-0.5 rounded text-[8.5px] font-mono font-bold tracking-wider uppercase bg-indigo-100 text-indigo-800 border border-indigo-200">
+                        COMMANDE OPTIC
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold uppercase ${
+                        cmd.status === 'finalized' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {cmd.status}
+                      </span>
+                    </div>
+
+                    <div className="my-1.5 flex-1">
+                      <h5 className="text-[10px] font-mono font-bold tracking-wide uppercase text-slate-500">{cmd.id}</h5>
+                      <h4 className="text-xs font-semibold text-slate-800 leading-tight mt-0.5">{cmd.customer}</h4>
+                      <p className="text-[10px] text-slate-500 mt-1 truncate">Monture: {cmd.frameModel}</p>
+                      <p className="text-[10px] text-slate-500 truncate">Verres: {cmd.lensesType}</p>
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center">
+                      <div>
+                        <div className="text-[9px] text-slate-450 font-bold uppercase">Solde restant</div>
+                        <div className="text-xs font-mono font-black text-rose-600">
+                          {formatCFA(cmd.totalFCFA - cmd.amountPaid)}
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-medium">Total: {formatCFA(cmd.totalFCFA)}</div>
+                      </div>
+                      <button
+                        onClick={() => handleImportOpticOrder(cmd)}
+                        className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-[10px] border-0 cursor-pointer flex items-center gap-1 shadow-xs transition"
+                      >
+                        <ShoppingBag className="w-3 h-3" />
+                        Importer
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )
+            ) : filteredProducts.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center py-12 text-slate-400 font-mono gap-3 border-2 border-dashed border-slate-150 rounded-2xl bg-slate-50/20">
                 <ShieldAlert className="w-8 h-8 text-amber-500/80" />
                 <div className="text-center">

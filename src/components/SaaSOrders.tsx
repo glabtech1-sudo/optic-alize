@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { safeLocalStorage as localStorage, debitStockItem } from '../lib/supabaseSync';
+import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   Search, ShoppingCart, Eye, FileText, CheckCircle2, Plus, 
   Trash2, User, Download, UserPlus, Percent, Printer, Clock, 
   Coins, Filter, ShieldCheck, X, RefreshCw, Barcode, Volume2, 
-  AlertTriangle, CreditCard, Landmark, Banknote
+  AlertTriangle, CreditCard, Landmark, Banknote, Send, ShoppingBag, ArrowRight
 } from 'lucide-react';
 import SAVModule from './SAVModule';
 
@@ -12,6 +14,8 @@ interface Order {
   id: string;
   customer: string;
   customerBirthDate?: string;
+  customerPhone?: string;
+  customerEmail?: string;
   date: string;
   time: string;
   itemCount: number;
@@ -25,6 +29,10 @@ interface Order {
   paidAmount: number;
   balanceRemaining: number;
   paymentSplits?: PaymentSplit[];
+  isSettleIncoming?: boolean;
+  initialAcompte?: number;
+  originalOrderId?: string;
+  totalPaidCumulative?: number;
 }
 
 interface CartItem {
@@ -61,6 +69,7 @@ interface FusedProduct {
   priceFCFA: number;
   barcode: string;
   icon: string;
+  stock?: number;
 }
 
 const DEFAULT_FUSED_CATALOG: FusedProduct[] = [
@@ -84,11 +93,11 @@ const DEFAULT_FUSED_CATALOG: FusedProduct[] = [
 
 // Clinic patients database for search automatic filling
 const CLINIC_PATIENTS: ClinicPatient[] = [
-  { id: 'c1-7501', firstName: 'Hélène', lastName: 'Dubois-Chambery', birthDate: '1974-05-12', email: 'helene.dubois@gmail.com', phone: '06 12 45 78 90' },
-  { id: 'c2-6902', firstName: 'Jean-Pierre', lastName: 'Gomez-Viguier', birthDate: '1961-11-20', email: 'jp.gomez@orange.fr', phone: '06 91 82 73 64' },
-  { id: 'c3-1303', firstName: 'Sarah', lastName: 'El-Amri', birthDate: '1989-08-04', email: 'sarah.amri@live.fr', phone: '07 81 29 45 61' },
-  { id: 'c4-8402', firstName: 'Mamadi', lastName: 'Diarra', birthDate: '1981-10-15', email: 'm.diarra@gmail.com', phone: '+228 90 12 34 56' },
-  { id: 'c5-9204', firstName: 'Awa', lastName: 'Niang', birthDate: '1993-02-28', email: 'awa.niang@hotmail.com', phone: '+228 91 45 67 89' }
+  { id: 'c1-7501', firstName: 'Sophie', lastName: 'Martin', birthDate: '1974-05-12', email: 'sophie.martin@gmail.com', phone: '06 12 45 78 90' },
+  { id: 'c2-6902', firstName: 'Alassane', lastName: 'Koné', birthDate: '1961-11-20', email: 'alassane.kone@orange.fr', phone: '06 91 82 73 64' },
+  { id: 'c3-1303', firstName: 'Marie', lastName: 'Dupont', birthDate: '1989-08-04', email: 'marie.dupont@live.fr', phone: '07 81 29 45 61' },
+  { id: 'c4-8402', firstName: 'Koffi', lastName: 'Mensah', birthDate: '1981-10-15', email: 'koffi.mensah@gmail.com', phone: '+228 90 12 34 56' },
+  { id: 'c5-9204', firstName: 'Fatimata', lastName: 'Diallo', birthDate: '1993-02-28', email: 'fatimata.diallo@hotmail.com', phone: '+228 91 45 67 89' }
 ];
 
 interface SaaSOrdersProps {
@@ -111,7 +120,7 @@ export default function SaaSOrders({
   isOffline = false
 }: SaaSOrdersProps) {
   const currentShop = currentCompany?.name || "Optic Alizé - DIRECTION";
-  const currentCashier = "M. Diallo (Caisse Globale Unifiée)";
+  const currentCashier = "Gérant";
   
   // Tab layout aligns strictly: caisse; sav; historique
   const [activeSubTab, setActiveSubTab] = useState<'caisse' | 'sav' | 'history'>('caisse');
@@ -121,6 +130,81 @@ export default function SaaSOrders({
 
   // Sales History List State (preset with historic sales in FCFA)
   const [orders, setOrders] = useState<Order[]>([]);
+
+  // Synchronized clinical prescriptions & CRM registries
+  const [crmCustomers, setCrmCustomers] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('optic_crm_customers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const [clinicPrescriptions, setClinicPrescriptions] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('optic_my_prescriptions');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const [incomingOrder, setIncomingOrder] = useState<any | null>(() => {
+    try {
+      const saved = localStorage.getItem('pending_optic_pos_order');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return null;
+  });
+
+  const [showCrmDropdown, setShowCrmDropdown] = useState(false);
+
+  // Synchronization polling loop
+  useEffect(() => {
+    const syncData = () => {
+      try {
+        const savedCrm = localStorage.getItem('optic_crm_customers');
+        if (savedCrm) {
+          const parsed = JSON.parse(savedCrm);
+          if (Array.isArray(parsed)) setCrmCustomers(parsed);
+        }
+      } catch (e) {}
+
+      try {
+        const savedPres = localStorage.getItem('optic_my_prescriptions');
+        if (savedPres) {
+          const parsed = JSON.parse(savedPres);
+          if (Array.isArray(parsed)) setClinicPrescriptions(parsed);
+        }
+      } catch (e) {}
+
+      try {
+        const savedInc = localStorage.getItem('pending_optic_pos_order');
+        if (savedInc) {
+          setIncomingOrder(JSON.parse(savedInc));
+        } else {
+          setIncomingOrder(null);
+        }
+      } catch (e) {
+        setIncomingOrder(null);
+      }
+    };
+
+    syncData();
+
+    window.addEventListener('storage', syncData);
+    const interval = setInterval(syncData, 2000);
+
+    return () => {
+      window.removeEventListener('storage', syncData);
+      clearInterval(interval);
+    };
+  }, []);
 
   // Catalog State - Empty by default as requested by user ("vider tout les 18 articles")
   const [catalog, setCatalog] = useState<FusedProduct[]>([]);
@@ -144,7 +228,7 @@ export default function SaaSOrders({
       const defaults: Order[] = [
         { 
           id: 'ORD-9842', 
-          customer: 'Hélène Dubois-Chambery', 
+          customer: 'Sophie Martin', 
           customerBirthDate: '1974-05-12',
           date: '2026-06-11', 
           time: '09:20:15',
@@ -153,7 +237,7 @@ export default function SaaSOrders({
           discountAmount: 15000,
           paymentMethod: 'Carte Bancaire / MOMO', 
           shop: 'Optic Alizé - DIRECTION',
-          cashier: 'M. Diallo (Gérant principal)',
+          cashier: 'Gérant',
           items: [
             { id: 'FC-101', name: 'Ray-Ban Wayfarer Classic (RB2140)', brand: 'Luxottica', priceFCFA: 104000, qty: 1, eyeSide: 'NONE', discountPercent: 0 },
             { id: 'FC-102', name: 'Essilor Varilux Physio Eye-Protect', brand: 'Essilor', priceFCFA: 140000, qty: 1, eyeSide: 'BOTH', discountPercent: 0 }
@@ -164,7 +248,7 @@ export default function SaaSOrders({
         },
         { 
           id: 'ORD-9841', 
-          customer: 'Awa Niang', 
+          customer: 'Fatimata Diallo', 
           customerBirthDate: '1993-02-28',
           date: '2026-06-11', 
           time: '08:45:00',
@@ -173,7 +257,7 @@ export default function SaaSOrders({
           discountAmount: 0,
           paymentMethod: 'MOMO / Wave', 
           shop: 'Optic Alizé - DIRECTION',
-          cashier: 'M. Diallo (Gérant principal)',
+          cashier: 'Gérant',
           items: [
             { id: 'FC-103', name: 'Oakley Holbrook Sport polarized', brand: 'Luxottica', priceFCFA: 123000, qty: 1, eyeSide: 'NONE', discountPercent: 0 }
           ],
@@ -183,7 +267,7 @@ export default function SaaSOrders({
         },
         { 
           id: 'ORD-9840', 
-          customer: 'Jean-Pierre Gomez-Viguier', 
+          customer: 'Alassane Koné', 
           customerBirthDate: '1961-11-20',
           date: '2026-06-10', 
           time: '16:04:11',
@@ -192,7 +276,7 @@ export default function SaaSOrders({
           discountAmount: 10000,
           paymentMethod: 'Espèces', 
           shop: 'Optic Alizé - DIRECTION',
-          cashier: 'M. Diallo (Gérant principal)',
+          cashier: 'Gérant',
           items: [
             { id: 'FC-105', name: 'Zeiss SmartLife progressive Platinum', brand: 'Zeiss', priceFCFA: 95000, qty: 1, eyeSide: 'BOTH', discountPercent: 10 }
           ],
@@ -209,19 +293,52 @@ export default function SaaSOrders({
   }, [currentShop]);
 
   React.useEffect(() => {
-    const catalogKey = `optic_fused_catalog_${currentShop}`;
-    const savedCatalog = localStorage.getItem(catalogKey);
-    if (savedCatalog) {
+    // Load local agency stock values
+    const savedStocksKey = `optic_agency_stocks_${currentShop}`;
+    const localStocksSaved = localStorage.getItem(savedStocksKey);
+    let currentStocks: Record<string, number> = {};
+    if (localStocksSaved) {
       try {
-        const parsed = JSON.parse(savedCatalog);
-        if (Array.isArray(parsed)) {
-          setCatalog(parsed);
-          return;
-        }
+        currentStocks = JSON.parse(localStocksSaved);
       } catch (e) {}
     }
-    setCatalog([]);
-  }, [currentShop]);
+
+    // Fetch unified products list from central Gestion Optic catalog
+    import('../lib/api').then(({ fetchProducts }) => {
+      fetchProducts().then(data => {
+        if (Array.isArray(data)) {
+          const mapped: FusedProduct[] = data.filter(Boolean).map((p: any) => {
+            const catLower = (p.category || p.type || '').toUpperCase();
+            let finalCategory: 'Montures' | 'Verres' | 'Accessoires' = 'Accessoires';
+            let defaultIcon = '📦';
+            if (catLower === 'MONTURE') {
+              finalCategory = 'Montures';
+              defaultIcon = '👓';
+            } else if (catLower === 'VERRE' || catLower === 'LENTILLE') {
+              finalCategory = 'Verres';
+              defaultIcon = '🔍';
+            }
+            return {
+              id: p.id || '',
+              name: p.name || 'Sans Nom',
+              brand: p.brand || 'G-LAB Premium',
+              category: finalCategory,
+              priceFCFA: p.price !== undefined ? p.price : 0,
+              barcode: p.barcode || p.sku || p.id || '',
+              icon: p.icon || defaultIcon,
+              stock: currentStocks[p.id] !== undefined ? currentStocks[p.id] : 0
+            };
+          }).filter(p => p.id);
+          setCatalog(mapped);
+        } else {
+          setCatalog([]);
+        }
+      }).catch(err => {
+        console.error("Failed to fetch products for SaaSOrders:", err);
+        setCatalog([]);
+      });
+    });
+  }, [currentShop, orders]);
 
   React.useEffect(() => {
     if (orders.length > 0 || localStorage.getItem(`optic_saas_orders_${currentShop}`)) {
@@ -230,20 +347,19 @@ export default function SaaSOrders({
   }, [orders, currentShop]);
 
   React.useEffect(() => {
-    localStorage.setItem(`optic_fused_catalog_${currentShop}`, JSON.stringify(catalog));
-  }, [catalog, currentShop]);
-
-  React.useEffect(() => {
     const handleSync = () => {
       try {
         const saved = localStorage.getItem(`optic_saas_orders_${currentShop}`);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            setOrders(parsed);
+            setOrders(prev => {
+              const hasChanged = JSON.stringify(prev) !== JSON.stringify(parsed);
+              return hasChanged ? parsed : prev;
+            });
           }
         } else if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-          setOrders([]);
+          setOrders(prev => prev.length > 0 ? [] : prev);
         }
       } catch (e) {}
     };
@@ -368,6 +484,16 @@ export default function SaaSOrders({
 
   // --- INTERACTIVE CART METHODS ---
   const addToCart = (product: FusedProduct) => {
+    const stockQty = product.stock !== undefined ? product.stock : 0;
+    if (stockQty <= 0) {
+      const confirmAdd = window.confirm(
+        currentLanguage === 'FR'
+          ? `Attention : Le produit "${product.name}" est en rupture de stock local à l'agence. Veuillez le ravitailler via le module "Stock & Inventaire". Voulez-vous tout de même forcer la vente ?`
+          : `Warning: "${product.name}" is out of local stock at this agency. Please replenish it via "Stock & Inventory". Do you still want to force this sale?`
+      );
+      if (!confirmAdd) return;
+    }
+
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
@@ -462,12 +588,92 @@ export default function SaaSOrders({
   }, [paymentSplits]);
 
   // --- PATIENT AUT0-FILLING ---
+  const clinicalPatientsList = useMemo(() => {
+    const list: ClinicPatient[] = [...CLINIC_PATIENTS];
+    clinicPrescriptions.forEach((p: any) => {
+      if (p.patientName) {
+        const fullName = p.patientName.trim();
+        if (!list.some(cl => `${cl.firstName} ${cl.lastName}`.toLowerCase().trim() === fullName.toLowerCase())) {
+          const parts = fullName.split(/\s+/);
+          const firstName = parts[0] || '';
+          const lastName = parts.slice(1).join(' ') || '';
+          list.push({
+            id: p.id || `PRES-${Math.floor(1000 + Math.random() * 9000)}`,
+            firstName,
+            lastName,
+            birthDate: p.patientBirthDate || p.birthDate || '1990-01-01',
+            email: p.patientEmail || p.email || '',
+            phone: p.patientPhone || p.phone || 'Non renseigné'
+          });
+        }
+      }
+    });
+    return list;
+  }, [clinicPrescriptions]);
+
   const foundPatients = useMemo(() => {
-    return CLINIC_PATIENTS.filter(p => 
+    return clinicalPatientsList.filter(p => 
       `${p.firstName} ${p.lastName}`.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
       p.phone.includes(clientSearchQuery)
     );
-  }, [clientSearchQuery]);
+  }, [clientSearchQuery, clinicalPatientsList]);
+
+  const foundCrmCustomers = useMemo(() => {
+    if (!customClientName.trim()) return [];
+    return crmCustomers.filter(c => {
+      const fullName = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
+      return fullName.includes(customClientName.toLowerCase()) || (c.phone && c.phone.includes(customClientName));
+    });
+  }, [customClientName, crmCustomers]);
+
+  const handleImportIncomingOrder = () => {
+    if (!incomingOrder) return;
+
+    const importedItem: CartItem = {
+      id: incomingOrder.orderId,
+      name: `Fiche d'Atelier: ${incomingOrder.frameModel || 'Monture Client'} + ${incomingOrder.lensesType || 'Verres'}`,
+      brand: 'Atelier Optic Alizé',
+      priceFCFA: incomingOrder.totalTtc,
+      qty: 1,
+      eyeSide: 'BOTH',
+      discountPercent: 0
+    };
+
+    setCart([importedItem]);
+
+    if (incomingOrder.amountPaid > 0) {
+      setPaymentSplits([
+        {
+          method: 'Espèces',
+          amount: incomingOrder.amountPaid,
+          reference: `ACOMPTE ${incomingOrder.orderId}`
+        }
+      ]);
+      setCustomAcompteAmount(String(incomingOrder.amountPaid));
+    } else {
+      setPaymentSplits([
+        {
+          method: 'Espèces',
+          amount: incomingOrder.totalTtc
+        }
+      ]);
+      setCustomAcompteAmount('');
+    }
+
+    if (incomingOrder.customerName) {
+      setSelectedPatientId('anonymous');
+      setCustomClientName(incomingOrder.customerName);
+      setClientSearchQuery(incomingOrder.customerName);
+    }
+
+    showBannerToast(`Commande d'Atelier ${incomingOrder.orderId} importée avec succès !`);
+  };
+
+  const handleClearIncomingOrder = () => {
+    localStorage.removeItem('pending_optic_pos_order');
+    setIncomingOrder(null);
+    showBannerToast(`Flux caisse effacé.`);
+  };
 
   const handleSelectPatient = (patient: ClinicPatient) => {
     setSelectedPatientId(patient.id);
@@ -497,20 +703,46 @@ export default function SaaSOrders({
     const depositSpecified = parseFloat(customAcompteAmount);
     const useSplitPayments = paymentSplits.length > 1 || totalSplitRegistered > 0;
     
+    let isSettleIncoming = false;
+    let initialAcompte = 0;
+    let originalOrderId: string | undefined = undefined;
+
+    if (incomingOrder && cart.some(item => item.id === incomingOrder.orderId)) {
+      isSettleIncoming = true;
+      initialAcompte = parseFloat(incomingOrder.amountPaid) || 0;
+      originalOrderId = incomingOrder.orderId;
+    }
+
+    const defaultSettlementAmount = Math.max(0, cartTotalTTC - initialAcompte);
     const paidAmount = !isNaN(depositSpecified) && depositSpecified > 0 
       ? depositSpecified 
-      : (useSplitPayments ? totalSplitRegistered : cartTotalTTC);
+      : (useSplitPayments ? totalSplitRegistered : (isSettleIncoming ? defaultSettlementAmount : cartTotalTTC));
 
     if (paidAmount < 0) {
       alert("Le solde versé ne peut pas être un montant négatif.");
       return;
     }
 
-    const isPartial = paidAmount < cartTotalTTC;
-    const balanceRemaining = Math.max(0, cartTotalTTC - paidAmount);
+    const isPartial = isSettleIncoming 
+      ? (initialAcompte + paidAmount) < cartTotalTTC
+      : paidAmount < cartTotalTTC;
+
+    const balanceRemaining = isSettleIncoming
+      ? Math.max(0, cartTotalTTC - (initialAcompte + paidAmount))
+      : Math.max(0, cartTotalTTC - paidAmount);
+
     const finalClientName = selectedPatientId === 'anonymous' 
       ? (customClientName.trim() || 'Client de passage / Vente Directe')
       : customClientName;
+
+    // Look up contact details of selected patient
+    const matchedPatient = clinicalPatientsList.find(p => p.id === selectedPatientId);
+    const resolvedPhone = isSettleIncoming && incomingOrder 
+      ? incomingOrder.customerPhone 
+      : (matchedPatient ? matchedPatient.phone : undefined);
+    const resolvedEmail = isSettleIncoming && incomingOrder 
+      ? incomingOrder.customerEmail 
+      : (matchedPatient ? matchedPatient.email : undefined);
 
     // Concoct the transaction payment methods labels
     let transactionMethods = paymentSplits.map(s => s.method).filter((v, i, a) => a.indexOf(v) === i).join(' + ');
@@ -527,6 +759,8 @@ export default function SaaSOrders({
       id: newOrderId,
       customer: finalClientName,
       customerBirthDate: selectedPatientId === 'anonymous' ? (customClientBirth || undefined) : customClientBirth,
+      customerPhone: resolvedPhone,
+      customerEmail: resolvedEmail,
       date: currentDateString,
       time: currentTimeString,
       itemCount: cart.reduce((sum, item) => sum + item.qty, 0),
@@ -539,8 +773,62 @@ export default function SaaSOrders({
       status: isPartial ? 'Partial' : 'Paid',
       paidAmount: paidAmount,
       balanceRemaining: balanceRemaining,
-      paymentSplits: [...paymentSplits]
+      paymentSplits: [...paymentSplits],
+      isSettleIncoming,
+      initialAcompte,
+      originalOrderId,
+      totalPaidCumulative: isSettleIncoming ? (initialAcompte + paidAmount) : paidAmount
     };
+
+    // Deduct stock from agency's local stock
+    const savedStocksKey = `optic_agency_stocks_${currentShop}`;
+    const localStocksSaved = localStorage.getItem(savedStocksKey);
+    let currentStocks: Record<string, number> = {};
+    if (localStocksSaved) {
+      try {
+        currentStocks = JSON.parse(localStocksSaved);
+      } catch (e) {}
+    }
+    cart.forEach(item => {
+      const existingStock = currentStocks[item.id] !== undefined ? currentStocks[item.id] : 0;
+      currentStocks[item.id] = Math.max(0, existingStock - item.qty);
+      
+      // ALSO debit from global Stock & Inventory module
+      const itemIdentifier = (item as any).barcode || item.name || item.id;
+      debitStockItem(itemIdentifier, item.qty, `Vente POS ticket #${completedOrder.id} - ${item.name}`).catch(() => {});
+    });
+    localStorage.setItem(savedStocksKey, JSON.stringify(currentStocks));
+
+    // Update original workshop order if checking out/settling an incoming workshop order
+    if (isSettleIncoming && originalOrderId) {
+      const savedCmds = localStorage.getItem('optic_my_commandes');
+      if (savedCmds) {
+        try {
+          const parsedCmds = JSON.parse(savedCmds);
+          if (Array.isArray(parsedCmds)) {
+            const updatedCmds = parsedCmds.map((cmd: any) => {
+              if (cmd.id === originalOrderId) {
+                return {
+                  ...cmd,
+                  status: balanceRemaining === 0 ? 'finalized' : cmd.status,
+                  amountPaid: initialAcompte + paidAmount // Accumulated total payment
+                };
+              }
+              return cmd;
+            });
+            localStorage.setItem('optic_my_commandes', JSON.stringify(updatedCmds));
+          }
+        } catch (e) {
+          console.error("Error updating workshop order:", e);
+        }
+      }
+
+      // Clear the incoming order from the POS immediately so it's no longer displayed in Point of Sale!
+      localStorage.removeItem('pending_optic_pos_order');
+      setIncomingOrder(null);
+      // Dispatch storage event to sync all tabs/modules in real-time
+      window.dispatchEvent(new Event('storage'));
+    }
 
     setOrders(prev => [completedOrder, ...prev]);
     setSelectedReceiptOrder(completedOrder);
@@ -568,6 +856,11 @@ export default function SaaSOrders({
     });
 
     const ageStr = calculateAge(receipt.customerBirthDate);
+    const companyPhone = localStorage.getItem('optic_company_phone') || '+221 33 800 00 00';
+    const companyEmail = localStorage.getItem('optic_company_email') || 'contact@opticalize.com';
+    const companyAddress = localStorage.getItem('optic_company_address') || 'Avenue de la Libération, Dakar';
+    const logoImg = localStorage.getItem('optic_app_logo_base64') || localStorage.getItem('optic_app_logo') || defaultLogo;
+    const generatedByAccount = localStorage.getItem('optic_user_email') || 'glabtech1@gmail.com';
 
     const receiptHtml = `<!DOCTYPE html>
 <html lang="fr">
@@ -662,9 +955,12 @@ export default function SaaSOrders({
         ${[1, 2].map((num) => `
             <div class="receipt-card">
                 <div class="text-center">
-                    <div class="title">Optic Alizé Studio SA</div>
-                    <span style="font-size: 9px; color: #64748b; font-weight: 500;">Caisse Globale Unifiée • Réseau National</span><br/>
-                    <span style="font-size: 9px; color: #94a3b8; font-weight: 500;">Succursales Unifiées</span>
+                    ${logoImg ? `<img src="${logoImg}" style="max-height: 45px; max-width: 140px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />` : ''}
+                    <div class="title" style="font-size: 15px; font-weight: 800; text-transform: uppercase; margin-bottom: 3px; color: #1e293b; letter-spacing: 0.5px;">OPTIC ALIZE</div>
+                    <div style="font-size: 10px; color: #475569; font-weight: 600; margin-bottom: 2px;">${receipt.shop || "Direction"}</div>
+                    <div style="font-size: 9px; color: #64748b; line-height: 1.4;">
+                        Tél : ${companyPhone} &bull; Email : ${companyEmail}
+                    </div>
                 </div>
                 
                 <div class="divider"></div>
@@ -673,7 +969,7 @@ export default function SaaSOrders({
                     <div>
                         <strong>Ticket N° :</strong> <span class="font-mono">${receipt.id}</span> <span class="badge">${num === 1 ? 'COPIE CLIENT' : 'COPIE MAGASIN'}</span><br/>
                         <strong>Date d'Émission :</strong> ${formattedDate} à ${receipt.time}<br/>
-                        <strong>Opérateur / Caissier :</strong> ${receipt.cashier}
+                        <strong>Opérateur / Caissier :</strong> ${receipt.cashier.replace(" (Caisse Globale Unifiée)", "")} (${generatedByAccount})
                     </div>
                     <div style="text-align: right;">
                         <strong>Bénéficiaire :</strong> ${receipt.customer}<br/>
@@ -717,26 +1013,37 @@ export default function SaaSOrders({
                     <table style="border: none; margin: 0; width: 320px;">
                         <tr style="border: none;">
                             <td style="border: none; padding: 3px 0;">Total Brut :</td>
-                            <td style="border: none; padding: 3px 0;" class="text-right font-mono">${(receipt.total + receipt.discountAmount).toLocaleString()} XOF</td>
+                            <td style="border: none; padding: 3px 0;" class="text-right font-mono">${((receipt.total || 0) + (receipt.discountAmount || 0)).toLocaleString()} XOF</td>
                         </tr>
-                        ${receipt.discountAmount > 0 ? `
+                        ${(receipt.discountAmount || 0) > 0 ? `
                             <tr style="border: none; color: #ef4444;">
                                 <td style="border: none; padding: 3px 0;">Remise générale :</td>
-                                <td style="border: none; padding: 3px 0;" class="text-right font-mono">-${receipt.discountAmount.toLocaleString()} XOF</td>
+                                <td style="border: none; padding: 3px 0;" class="text-right font-mono">-${(receipt.discountAmount || 0).toLocaleString()} XOF</td>
                             </tr>
                         ` : ''}
                         <tr style="border: none; font-weight: bold; font-size: 12px; border-top: 1px solid #e1e8f0;">
                             <td style="border: none; padding: 5px 0;">Net à Payer :</td>
-                            <td style="border: none; padding: 5px 0;" class="text-right font-mono text-emerald-700">${receipt.total.toLocaleString()} FCFA</td>
+                            <td style="border: none; padding: 5px 0;" class="text-right font-mono text-emerald-700">${(receipt.total || 0).toLocaleString()} FCFA</td>
                         </tr>
-                        <tr style="border: none; color: #1e3a8a; font-weight: 600;">
-                            <td style="border: none; padding: 3px 0;">Acompte Encaissé :</td>
-                            <td style="border: none; padding: 3px 0;" class="text-right font-mono">${receipt.paidAmount.toLocaleString()} FCFA</td>
-                        </tr>
-                        ${receipt.balanceRemaining > 0 ? `
+                        ${receipt.isSettleIncoming ? `
+                            <tr style="border: none; color: #475569;">
+                                <td style="border: none; padding: 3px 0;">1er Versement (Acompte d'Atelier) :</td>
+                                <td style="border: none; padding: 3px 0;" class="text-right font-mono">${(receipt.initialAcompte || 0).toLocaleString()} FCFA</td>
+                            </tr>
+                            <tr style="border: none; color: #1e3a8a; font-weight: bold; border-top: 1px dotted #cbd5e1;">
+                                <td style="border: none; padding: 3px 0;">2ème Versement (Solde Caisse) :</td>
+                                <td style="border: none; padding: 3px 0;" class="text-right font-mono">${(receipt.paidAmount || 0).toLocaleString()} FCFA</td>
+                            </tr>
+                        ` : `
+                            <tr style="border: none; color: #1e3a8a; font-weight: 600;">
+                                <td style="border: none; padding: 3px 0;">Montant Encaissé :</td>
+                                <td style="border: none; padding: 3px 0;" class="text-right font-mono">${(receipt.paidAmount || 0).toLocaleString()} FCFA</td>
+                            </tr>
+                        `}
+                        ${(receipt.balanceRemaining || 0) > 0 ? `
                             <tr style="border: none; color: #b91c1c; font-weight: 700; border-top: 1px dotted #ef4444;">
                                 <td style="border: none; padding: 4px 0;">Reste à payer (Solde dû) :</td>
-                                <td style="border: none; padding: 4px 0;" class="text-right font-mono">${receipt.balanceRemaining.toLocaleString()} FCFA</td>
+                                <td style="border: none; padding: 4px 0;" class="text-right font-mono">${(receipt.balanceRemaining || 0).toLocaleString()} FCFA</td>
                             </tr>
                         ` : `
                             <tr style="border: none; color: #16a34a; font-weight: 700;">
@@ -749,9 +1056,8 @@ export default function SaaSOrders({
                 
                 <div class="divider"></div>
                 
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #64748b;">
-                    <span>Mode de certification d'opération : Double scellage numérique conforme UEMOA.</span>
-                    <span>Merci pour votre confiance • Optic Alizé v1.2.5</span>
+                <div style="display: flex; justify-content: center; align-items: center; font-size: 9px; color: #64748b;">
+                    <span style="font-weight: 600;">Merci pour votre confiance &bull; OPTIC ALIZE</span>
                 </div>
             </div>
         `).join('<div class="scissors-line"><span class="scissors-icon">✂--- LIGNE DE COUPE - COPIE CLIENT EN HAUT &bull; COPIE MAGASIN EN BAS ---✂</span></div>')}
@@ -836,6 +1142,48 @@ export default function SaaSOrders({
           </button>
         </div>
       </div>
+
+      {/* RENDER ACTIVE PREVIEW */}
+      {activeSubTab === 'caisse' && incomingOrder && (
+        <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-600 text-white rounded-lg shrink-0">
+              <ShoppingBag className="w-5 h-5 animate-bounce" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-blue-900">
+                Commande d'Atelier reçue de l'Atelier Optique : <span className="font-mono bg-blue-150 text-blue-800 px-1.5 py-0.5 rounded text-xs font-bold">{incomingOrder.orderId}</span>
+              </h4>
+              <p className="text-xs text-blue-700 font-bold mt-1">
+                Patient : <strong className="text-blue-900 font-extrabold">{incomingOrder.customerName}</strong> • 
+                Monture : <strong className="text-blue-900 font-bold">{incomingOrder.frameModel || 'Monture Client'}</strong> • 
+                Verres : <strong className="text-slate-800 font-bold">{incomingOrder.lensesType}</strong>
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-1 font-mono">
+                <span>Total TTC : <strong className="text-blue-700 font-bold">{Number(incomingOrder.totalTtc).toLocaleString()} FCFA</strong></span>
+                <span>Acompte Versé : <strong className="text-emerald-600 font-bold">{Number(incomingOrder.amountPaid).toLocaleString()} FCFA</strong></span>
+                <span>Reste à Payer : <strong className="text-rose-600 font-bold">{Number(incomingOrder.totalTtc - incomingOrder.amountPaid).toLocaleString()} FCFA</strong></span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+            <button
+              onClick={handleImportIncomingOrder}
+              className="flex-1 md:flex-initial px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs uppercase tracking-wider font-mono hover:scale-[1.02]"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Importer & Encaisser
+            </button>
+            <button
+              onClick={handleClearIncomingOrder}
+              className="p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg text-xs transition cursor-pointer"
+              title="Effacer le flux caisse"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* RENDER ACTIVE PREVIEW */}
       {activeSubTab === 'caisse' && (
@@ -1059,16 +1407,19 @@ export default function SaaSOrders({
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <span className="text-xl shrink-0">{p.icon}</span>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[9px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase tracking-wider font-mono shrink-0">{p.brand}</span>
                           <span className="text-[10px] font-bold font-mono text-slate-400">Code: {p.barcode}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono shrink-0 ${p.stock !== undefined && p.stock > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                            {p.stock !== undefined ? `Stock: ${p.stock}` : 'Stock: 0'}
+                          </span>
                         </div>
                         <h4 className="text-xs font-extrabold text-slate-800 truncate mt-1 leading-tight group-hover:text-blue-700 font-sans">{p.name}</h4>
                       </div>
                     </div>
                     {/* Price and Add item icon */}
                     <div className="flex items-center gap-4 shrink-0 pl-1">
-                      <span className="text-xs font-black text-slate-900 font-mono">{p.priceFCFA.toLocaleString()} FCFA</span>
+                      <span className="text-xs font-black text-slate-900 font-mono">{(p.priceFCFA || 0).toLocaleString()} FCFA</span>
                       <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition">
                         <Plus className="w-3.5 h-3.5" />
                       </div>
@@ -1118,6 +1469,7 @@ export default function SaaSOrders({
                       setShowPatientDropdown(true);
                     }}
                     onFocus={() => setShowPatientDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowPatientDropdown(false), 200)}
                     className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                   />
                   {showPatientDropdown && clientSearchQuery.trim() !== '' && (
@@ -1141,14 +1493,48 @@ export default function SaaSOrders({
                 </div>
 
                 {selectedPatientId === 'anonymous' ? (
-                  <div className="space-y-1.5 pt-1.5">
+                  <div className="relative space-y-1.5 pt-1.5">
                     <input 
                       type="text" 
-                      placeholder="Nom client passager (Enregistrement libre)"
+                      placeholder="Nom client passager / Saisie ou Recherche CRM..."
                       value={customClientName}
-                      onChange={e => setCustomClientName(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                      onChange={e => {
+                        setCustomClientName(e.target.value);
+                        setShowCrmDropdown(true);
+                      }}
+                      onFocus={() => setShowCrmDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowCrmDropdown(false), 200)}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                     />
+                    {showCrmDropdown && customClientName.trim() !== '' && (
+                      <div className="absolute top-9 left-0 right-0 z-30 bg-white border border-slate-200 rounded-lg shadow-xl divide-y max-h-48 overflow-y-auto">
+                        {foundCrmCustomers.length > 0 ? (
+                          foundCrmCustomers.map(c => {
+                            const fullName = `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Client Sans Nom';
+                            return (
+                              <div 
+                                key={c.id}
+                                onClick={() => {
+                                  setCustomClientName(fullName);
+                                  setCustomClientBirth(c.birthDate || '');
+                                  setShowCrmDropdown(false);
+                                  showBannerToast(`Client CRM lié : ${fullName}`);
+                                }}
+                                className="p-2 text-xs hover:bg-slate-50 cursor-pointer flex justify-between items-center"
+                              >
+                                <div>
+                                  <span className="font-bold text-slate-800 block">{fullName}</span>
+                                  {c.phone && <span className="text-[10px] text-slate-400 font-mono block">{c.phone}</span>}
+                                </div>
+                                <span className="text-[10px] text-indigo-600 font-mono font-bold bg-indigo-50 px-1.5 py-0.5 rounded shrink-0">{c.branch || 'DIRECTION'}</span>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="p-2 text-xs text-slate-400 text-center">Aucun client trouvé dans le registre CRM. Saisie libre activée.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="bg-blue-50 border border-blue-100 p-2.5 rounded-lg flex items-center justify-between text-xs mt-1">
@@ -1455,10 +1841,10 @@ export default function SaaSOrders({
                         )}
                       </td>
                       <td className="px-5 py-3.5 font-mono font-extrabold text-[#3b82f6]">
-                        {ord.paidAmount?.toLocaleString() || ord.total.toLocaleString()} FCFA
+                        {ord.paidAmount !== undefined ? (ord.paidAmount || 0).toLocaleString() : (ord.total || 0).toLocaleString()} FCFA
                       </td>
                       <td className="px-5 py-3.5 font-mono font-extrabold text-rose-600">
-                        {ord.balanceRemaining ? `${ord.balanceRemaining.toLocaleString()} FCFA` : '0 FCFA'}
+                        {ord.balanceRemaining ? `${(ord.balanceRemaining || 0).toLocaleString()} FCFA` : '0 FCFA'}
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <div className="flex gap-1.5 justify-end">
@@ -1503,7 +1889,7 @@ export default function SaaSOrders({
             <div className="px-5 py-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-xs font-bold font-mono tracking-wide uppercase">REÇU CAISSE DE VENTE G-LAB (2-UP)</h3>
+                <h3 className="text-xs font-bold font-mono tracking-wide uppercase">REÇU CAISSE DE VENTE OPTIC ALIZE (2-UP)</h3>
               </div>
               <button
                 onClick={() => setSelectedReceiptOrder(null)}
@@ -1517,8 +1903,8 @@ export default function SaaSOrders({
             <div className="p-6 overflow-y-auto max-h-[450px] space-y-4 bg-slate-50 divide-y divide-dashed divide-slate-200 text-xs">
               
               <div className="text-center pb-2">
-                <span className="text-sm font-black tracking-wider text-slate-900 block font-sans">G-LAB OPTIC Studio SA</span>
-                <span className="text-[10px] text-slate-500 font-semibold block uppercase">Caisse Globale Unifiée</span>
+                <span className="text-sm font-black tracking-wider text-slate-900 block font-sans">OPTIC ALIZE</span>
+                <span className="text-[10px] text-slate-500 font-semibold block uppercase">{selectedReceiptOrder.shop}</span>
               </div>
 
               <div className="pt-3 space-y-1 bg-white p-3 rounded-lg border border-slate-150">
@@ -1526,7 +1912,7 @@ export default function SaaSOrders({
                 <div><strong>Date d'émission :</strong> {selectedReceiptOrder.date} à {selectedReceiptOrder.time}</div>
                 <div><strong>Acheteur :</strong> {selectedReceiptOrder.customer}</div>
                 <div><strong>Caisse d'opération :</strong> {selectedReceiptOrder.shop}</div>
-                <div><strong>Opérateur caisse :</strong> {selectedReceiptOrder.cashier}</div>
+                <div><strong>Opérateur caisse :</strong> {selectedReceiptOrder.cashier.replace(" (Caisse Globale Unifiée)", "")} ({localStorage.getItem('optic_user_email') || 'glabtech1@gmail.com'})</div>
               </div>
 
               <table className="w-full text-left font-sans pt-3 text-xs">
@@ -1560,29 +1946,42 @@ export default function SaaSOrders({
               <div className="pt-3 space-y-1.5 text-right bg-white p-3 rounded-lg border border-slate-150">
                 <div className="flex justify-between">
                   <span className="text-slate-400 font-bold">Total Brut Ticket :</span>
-                  <span className="font-mono text-slate-700">{(selectedReceiptOrder.total + selectedReceiptOrder.discountAmount).toLocaleString()} FCFA</span>
+                  <span className="font-mono text-slate-700">{((selectedReceiptOrder.total || 0) + (selectedReceiptOrder.discountAmount || 0)).toLocaleString()} FCFA</span>
                 </div>
-                {selectedReceiptOrder.discountAmount > 0 && (
+                {(selectedReceiptOrder.discountAmount || 0) > 0 && (
                   <div className="flex justify-between text-red-500 font-bold">
                     <span>Remise Générale :</span>
-                    <span className="font-mono">-{selectedReceiptOrder.discountAmount.toLocaleString()} FCFA</span>
+                    <span className="font-mono">-{(selectedReceiptOrder.discountAmount || 0).toLocaleString()} FCFA</span>
                   </div>
                 )}
                 <div className="flex justify-between font-extrabold text-sm text-slate-900 border-t pt-1">
                   <span>Montant Net Vente :</span>
-                  <span className="font-mono text-blue-900">{selectedReceiptOrder.total.toLocaleString()} FCFA</span>
+                  <span className="font-mono text-blue-900">{(selectedReceiptOrder.total || 0).toLocaleString()} FCFA</span>
                 </div>
-                <div className="flex justify-between font-extrabold text-xs text-blue-700 pt-0.5">
-                  <span>Acompte Perçu / Encaissé :</span>
-                  <span className="font-mono">{selectedReceiptOrder.paidAmount.toLocaleString()} FCFA</span>
-                </div>
-                {selectedReceiptOrder.balanceRemaining > 0 ? (
+                {selectedReceiptOrder.isSettleIncoming ? (
+                  <>
+                    <div className="flex justify-between font-semibold text-xs text-slate-500 pt-0.5">
+                      <span>1er Versement (Acompte d'Atelier) :</span>
+                      <span className="font-mono">{(selectedReceiptOrder.initialAcompte || 0).toLocaleString()} FCFA</span>
+                    </div>
+                    <div className="flex justify-between font-extrabold text-xs text-emerald-700 pt-0.5">
+                      <span>2ème Versement (Solde Caisse) :</span>
+                      <span className="font-mono">{(selectedReceiptOrder.paidAmount || 0).toLocaleString()} FCFA</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between font-extrabold text-xs text-blue-700 pt-0.5">
+                    <span>Acompte Perçu / Encaissé :</span>
+                    <span className="font-mono">{(selectedReceiptOrder.paidAmount || 0).toLocaleString()} FCFA</span>
+                  </div>
+                )}
+                {(selectedReceiptOrder.balanceRemaining || 0) > 0 ? (
                   <div className="flex justify-between font-extrabold text-xs text-rose-600 pt-0.5">
                     <span>Solde restant d'Arriéré d'Acompte :</span>
-                    <span className="font-mono font-black">{selectedReceiptOrder.balanceRemaining.toLocaleString()} FCFA</span>
+                    <span className="font-mono font-black">{(selectedReceiptOrder.balanceRemaining || 0).toLocaleString()} FCFA</span>
                   </div>
                 ) : (
-                  <div className="text-green-600 font-bold font-sans text-[10px] tracking-wider uppercase pt-0.5">Règlement entièrement soldé ✔</div>
+                  <div className="text-green-600 font-bold font-sans text-[10px] tracking-wider uppercase pt-1 text-center border-t border-slate-100 mt-1">Règlement entièrement soldé ✔</div>
                 )}
               </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { 
   Cloud, 
   RefreshCw, 
@@ -17,7 +18,9 @@ import {
   Calendar,
   Lock,
   Globe,
-  Plus
+  Plus,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { 
   isSupabaseConfigured, 
@@ -25,6 +28,26 @@ import {
   pushAllCollectionsToSupabase, 
   getSupabaseSetupSQL 
 } from '../lib/supabaseSync';
+
+const MODULES_17 = [
+  { id: 1, labelFR: "Module 1/17 : Fiches Collaborateurs (RH)", labelEN: "Module 1/17 : Employee Profiles (HR)", keys: ['optic_hr_employees'] },
+  { id: 2, labelFR: "Module 2/17 : Pointages & Présences", labelEN: "Module 2/17 : Attendance Logs", keys: ['optic_attendance_ledger'] },
+  { id: 3, labelFR: "Module 3/17 : Gestion des Congés", labelEN: "Module 3/17 : Leaves & Absences", keys: ['optic_leaves'] },
+  { id: 4, labelFR: "Module 4/17 : Primes, Avances & Ajustements", labelEN: "Module 4/17 : Salaries Adjustments", keys: ['optic_adjustments'] },
+  { id: 5, labelFR: "Module 5/17 : Bulletins de Paie", labelEN: "Module 5/17 : Monthly Payslips", keys: ['optic_payslips'] },
+  { id: 6, labelFR: "Module 6/17 : Base Clients & Patients CRM", labelEN: "Module 6/17 : CRM & Patients Directory", keys: ['optic_crm_customers', 'optic_customers'] },
+  { id: 7, labelFR: "Module 7/17 : Rendez-vous Cliniques", labelEN: "Module 7/17 : Clinic Appointments", keys: ['optic_my_clinic_appointments'] },
+  { id: 8, labelFR: "Module 8/17 : Examens Visuels & Réfractions", labelEN: "Module 8/17 : Refraction & Sight Exams", keys: ['optic_my_clinic_exams'] },
+  { id: 9, labelFR: "Module 9/17 : Ordonnances Médicales", labelEN: "Module 9/17 : Medical Prescriptions", keys: ['optic_my_prescriptions'] },
+  { id: 10, labelFR: "Module 10/17 : Catalogue de Vente Fusionné", labelEN: "Module 10/17 : Fused Product Catalog", keys: ['optic_fused_catalog', 'optic_products'] },
+  { id: 11, labelFR: "Module 11/17 : Inventaires Généraux du Stock", labelEN: "Module 11/17 : Stock Inventories", keys: ['optic_inventory'] },
+  { id: 12, labelFR: "Module 12/17 : Articles du Stock & Historique", labelEN: "Module 12/17 : Stock Items & History", keys: ['optic_stock_items', 'optic_stock_history'] },
+  { id: 13, labelFR: "Module 13/17 : Fiches Fournisseurs", labelEN: "Module 13/17 : Supplier Database", keys: ['optic_suppliers'] },
+  { id: 14, labelFR: "Module 14/17 : Commandes d'Approvisionnement", labelEN: "Module 14/17 : Supply Purchase Orders", keys: ['optic_my_commandes', 'optic_hq_pending_orders'] },
+  { id: 15, labelFR: "Module 15/17 : Enregistrements Ventes & POS", labelEN: "Module 15/17 : Sales Invoices & POS", keys: ['optic_saas_orders', 'optic_invoices', 'optic_vouchers_list', 'optic_sav_claims'] },
+  { id: 16, labelFR: "Module 16/17 : Grand Livre Comptable (Wave/OM)", labelEN: "Module 16/17 : Mobile Money & Expenses Ledger", keys: ['optic_accounting_revenues', 'optic_accounting_expenses', 'optic_accounting_momo'] },
+  { id: 17, labelFR: "Module 17/17 : Administration & Métadonnées Système", labelEN: "Module 17/17 : Host Companies, Branches & Logs", keys: ['optic_hq_companies', 'optic_hq_branches', 'optic_hq_zones', 'optic_hq_branch_modules', 'optic_users', 'optic_push_logs', 'optic_audit_logs', 'optic_backups_list'] }
+];
 
 interface BackupItem {
   id: string;
@@ -92,6 +115,9 @@ export default function BackupManager({ currentLanguage = 'FR', darkMode = false
   const [wipePassword, setWipePassword] = useState<string>('');
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wiping, setWiping] = useState<boolean>(false);
+  const [showWipePassword, setShowWipePassword] = useState<boolean>(false);
+  const [wipeProgress, setWipeProgress] = useState<number>(0);
+  const [wipeActiveStep, setWipeActiveStep] = useState<number>(-1); // -1: idle, 0-16: wiping modules, 17: completed
 
   // Supabase Sync States
   const [cloudSyncing, setCloudSyncing] = useState<boolean>(false);
@@ -316,7 +342,6 @@ export default function BackupManager({ currentLanguage = 'FR', darkMode = false
     }
 
     try {
-      setWiping(true);
       setWipeError(null);
 
       // Verify that password matches current logged-in user or system admin
@@ -337,26 +362,69 @@ export default function BackupManager({ currentLanguage = 'FR', darkMode = false
       }
 
       // If offline or local check fails, we can check server context or allow it for demo admin password
-      if (wipePassword === 'admin' || wipePassword === 'password' || isAuthorized) {
-        // Clear all local records except users/companies
-        const collectionsToWipe = ['optic_invoices', 'optic_customers', 'optic_products', 'optic_suppliers', 'optic_inventory', 'optic_audit_logs'];
-        collectionsToWipe.forEach(col => localStorage.removeItem(col));
-        
-        // Save audit log or show success
-        setSuccess(currentLanguage === 'FR' 
-          ? 'Base de données réinitialisée à blanc avec succès.' 
-          : 'Database reset to empty template state successfully.');
-        setShowWipeModal(false);
-        setWipePassword('');
-        fetchBackups();
+      const isMasterBypass = [
+        'Gildas@00741',
+        '0074741',
+        '0074',
+        'Gildas',
+        'G0074',
+        'glabtech1',
+        'admin',
+        'password'
+      ].includes(wipePassword);
+
+      if (isMasterBypass || isAuthorized) {
+        setWiping(true);
+        setWipeProgress(0);
+        setWipeActiveStep(0);
+
+        let currentStep = 0;
+        const totalSteps = MODULES_17.length;
+
+        const interval = setInterval(() => {
+          if (currentStep < totalSteps) {
+            const mod = MODULES_17[currentStep];
+            // Clear keys for this module
+            mod.keys.forEach(key => {
+              localStorage.removeItem(key);
+            });
+            
+            currentStep++;
+            const pct = Math.round((currentStep / totalSteps) * 100);
+            setWipeProgress(pct);
+            setWipeActiveStep(currentStep); // This updates active step
+          } else {
+            clearInterval(interval);
+            setWipeProgress(100);
+            setWipeActiveStep(17); // Completed state
+          }
+        }, 350); // Beautiful animation delay
+
       } else {
         setWipeError(currentLanguage === 'FR' ? 'Mot de passe incorrect ou droits insuffisants.' : 'Invalid administrator password.');
       }
     } catch (err) {
       setWipeError('Erreur lors de la réinitialisation.');
-    } finally {
-      setWiping(false);
     }
+  };
+
+  const handleResetFinalize = () => {
+    // Clear user session info
+    localStorage.removeItem('optic_user_email');
+    localStorage.removeItem('optic_user_profile');
+    localStorage.removeItem('optic_access_token');
+    localStorage.removeItem('optic_refresh_token');
+    
+    // Reset view modal
+    setShowWipeModal(false);
+    setWipePassword('');
+    setShowWipePassword(false);
+    setWipeProgress(0);
+    setWipeActiveStep(-1);
+    setWiping(false);
+    
+    // Force reload to go to the login screen
+    window.location.reload();
   };
 
   const formatSize = (bytes: number) => {
@@ -757,61 +825,135 @@ export default function BackupManager({ currentLanguage = 'FR', darkMode = false
       {showWipeModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white max-w-md w-full rounded-3xl p-6 border border-slate-150 space-y-4 shadow-xl text-left">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="p-2 bg-rose-50 rounded-xl">
-                <AlertTriangle className="w-6 h-6 animate-pulse" />
+            {wiping ? (
+              <div className="space-y-5 py-2 text-center">
+                <div className="mx-auto w-12 h-12 bg-rose-50 rounded-full flex items-center justify-center text-rose-600">
+                  {wipeActiveStep === 17 ? (
+                    <CheckCircle2 className="w-8 h-8 text-emerald-600 animate-bounce" />
+                  ) : (
+                    <RefreshCw className="w-6 h-6 animate-spin" />
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-slate-800">
+                    {wipeActiveStep === 17 
+                      ? (currentLanguage === 'FR' ? 'RÉINITIALISATION TERMINÉE !' : 'RESET COMPLETED!')
+                      : (currentLanguage === 'FR' ? 'RÉINITIALISATION EN COURS...' : 'RESETTING DATABASE...')}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                    {wipeActiveStep === 17
+                      ? (currentLanguage === 'FR' 
+                          ? 'Toutes les données des 17 modules ont été purgées avec succès.' 
+                          : 'All data from the 17 core modules has been successfully purged.')
+                      : (currentLanguage === 'FR' 
+                          ? 'Suppression des collections et purge de la mémoire...' 
+                          : 'Pungent memory and clearing local storage schemas...')}
+                  </p>
+                </div>
+
+                {/* Progress bar container */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-600 px-1 font-semibold">
+                    <span className="text-slate-500 font-mono text-left max-w-[80%] truncate">
+                      {wipeActiveStep < 17 && wipeActiveStep >= 0 && MODULES_17[wipeActiveStep]
+                        ? (currentLanguage === 'FR' ? MODULES_17[wipeActiveStep].labelFR : MODULES_17[wipeActiveStep].labelEN)
+                        : (wipeActiveStep === 17 
+                            ? (currentLanguage === 'FR' ? 'Purge du cache système terminée !' : 'System cache purge completed!')
+                            : '')}
+                    </span>
+                    <span className="font-black text-rose-600 font-mono">{wipeProgress}%</span>
+                  </div>
+
+                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-rose-600 h-full rounded-full transition-all duration-300"
+                      style={{ width: `${wipeProgress}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Return to Login button when finished */}
+                {wipeActiveStep === 17 && (
+                  <button
+                    type="button"
+                    onClick={handleResetFinalize}
+                    className="w-full mt-2 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-emerald-650 hover:bg-emerald-700 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{currentLanguage === 'FR' ? 'OK (Se reconnecter)' : 'OK (Login again)'}</span>
+                  </button>
+                )}
               </div>
-              <div>
-                <h4 className="text-sm font-black uppercase tracking-wide">
-                  {currentLanguage === 'FR' ? 'CONFIRMATION DE SÉCURITÉ' : 'SECURITY CONFIRMATION'}
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  {currentLanguage === 'FR' ? 'Cette action est irréversible !' : 'This action cannot be undone!'}
+            ) : (
+              <>
+                <div className="flex items-center gap-3 text-rose-600">
+                  <div className="p-2 bg-rose-50 rounded-xl">
+                    <AlertTriangle className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-wide">
+                      {currentLanguage === 'FR' ? 'CONFIRMATION DE SÉCURITÉ' : 'SECURITY CONFIRMATION'}
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      {currentLanguage === 'FR' ? 'Cette action est irréversible !' : 'This action cannot be undone!'}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  {currentLanguage === 'FR'
+                    ? "Pour réinitialiser toutes les fiches de vente, stocks et données médicales de la boutique, veuillez saisir votre mot de passe administrateur principal."
+                    : "To wipe all transaction registers, clinical histories, and stock ledgers, please enter your master administrator password."}
                 </p>
-              </div>
-            </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {currentLanguage === 'FR'
-                ? "Pour réinitialiser toutes les fiches de vente, stocks et données médicales de la boutique, veuillez saisir votre mot de passe administrateur principal."
-                : "To wipe all transaction registers, clinical histories, and stock ledgers, please enter your master administrator password."}
-            </p>
+                {wipeError && (
+                  <div className="p-2 bg-red-50 text-red-700 text-[10px] rounded-lg border border-red-150 font-medium">
+                    {wipeError}
+                  </div>
+                )}
 
-            {wipeError && (
-              <div className="p-2 bg-red-50 text-red-700 text-[10px] rounded-lg border border-red-150 font-medium">
-                {wipeError}
-              </div>
+                <form onSubmit={handleSystemWipe} className="space-y-4">
+                  <div className="relative">
+                    <input
+                      type={showWipePassword ? "text" : "password"}
+                      value={wipePassword}
+                      onChange={(e) => setWipePassword(e.target.value)}
+                      placeholder={currentLanguage === 'FR' ? 'Saisir mot de passe' : 'Enter admin password'}
+                      className="w-full pl-3 pr-10 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWipePassword(!showWipePassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-hidden cursor-pointer"
+                    >
+                      {showWipePassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowWipeModal(false)}
+                      className="flex-1 py-2 rounded-xl text-xs font-bold text-slate-500 border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                    >
+                      {currentLanguage === 'FR' ? 'Annuler' : 'Cancel'}
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 cursor-pointer"
+                    >
+                      {currentLanguage === 'FR' ? 'Confirmer l\'effacement' : 'Confirm wipe'}
+                    </button>
+                  </div>
+                </form>
+              </>
             )}
-
-            <form onSubmit={handleSystemWipe} className="space-y-4">
-              <div>
-                <input
-                  type="password"
-                  value={wipePassword}
-                  onChange={(e) => setWipePassword(e.target.value)}
-                  placeholder={currentLanguage === 'FR' ? 'Saisir mot de passe' : 'Enter admin password'}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500"
-                  required
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowWipeModal(false)}
-                  className="flex-1 py-2 rounded-xl text-xs font-bold text-slate-500 border border-slate-200 hover:bg-slate-50 cursor-pointer"
-                >
-                  {currentLanguage === 'FR' ? 'Annuler' : 'Cancel'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={wiping}
-                  className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
-                >
-                  {wiping ? (currentLanguage === 'FR' ? 'Suppression...' : 'Wiping...') : (currentLanguage === 'FR' ? 'Confirmer l\'effacement' : 'Confirm wipe')}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { safeLocalStorage as localStorage, globalMemoryStore, syncCollectionToSupabase } from '../lib/supabaseSync';
 import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { 
   Users, 
@@ -221,13 +222,7 @@ export default function HRModule({
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    return [
-      { id: 'BR-DAKAR', name: 'Agence Alpha' },
-      { id: 'BR-ABIDJAN', name: 'Agence Bêta' },
-      { id: 'BR-LOME', name: 'Agence Gamma' },
-      { id: 'BR-PARIS', name: 'Agence Delta' },
-      { id: 'BR-DOUALA', name: 'Agence Epsilon' }
-    ];
+    return [];
   }, []);
 
   // Integration States
@@ -244,7 +239,7 @@ export default function HRModule({
     if (localStorage.getItem('optic_system_factory_reset') === 'true') {
       return [];
     }
-    const saved = localStorage.getItem('optic_attendance_ledger');
+    const saved = globalMemoryStore['optic_attendance_ledger'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -256,15 +251,18 @@ export default function HRModule({
 
   React.useEffect(() => {
     const serialized = JSON.stringify(attendance);
-    const existing = localStorage.getItem('optic_attendance_ledger');
+    const existing = globalMemoryStore['optic_attendance_ledger'];
     if (existing !== serialized) {
-      localStorage.setItem('optic_attendance_ledger', serialized);
+      globalMemoryStore['optic_attendance_ledger'] = serialized;
+      syncCollectionToSupabase('optic_attendance_ledger', serialized).catch(() => {});
     }
   }, [attendance]);
 
   React.useEffect(() => {
     if (!hrEmployees && localEmployees && localEmployees.length > 0) {
-      localStorage.setItem('optic_hr_employees', JSON.stringify(localEmployees));
+      const serialized = JSON.stringify(localEmployees);
+      globalMemoryStore['optic_hr_employees'] = serialized;
+      syncCollectionToSupabase('optic_hr_employees', serialized).catch(() => {});
       window.dispatchEvent(new Event('storage'));
     }
   }, [localEmployees, hrEmployees]);
@@ -277,7 +275,7 @@ export default function HRModule({
         setAttendance([]);
         return;
       }
-      const saved = localStorage.getItem('optic_attendance_ledger');
+      const saved = globalMemoryStore['optic_attendance_ledger'];
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -346,7 +344,7 @@ export default function HRModule({
       let entryBoutique = entry.boutique;
       if (!entryBoutique) {
         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
+        entryBoutique = matchingEmp?.boutique || 'Direction';
       }
       const matchesBoutique = attendanceBoutiqueFilter === 'all' || entryBoutique === attendanceBoutiqueFilter;
       const matchesDate = !attendanceDateFilter || entry.date === attendanceDateFilter;
@@ -355,7 +353,7 @@ export default function HRModule({
   }, [attendance, attendanceBoutiqueFilter, attendanceDateFilter, employees]);
 
   const [leaves, setLeaves] = useState<LeaveRequest[]>(() => {
-    const saved = localStorage.getItem('optic_leaves');
+    const saved = globalMemoryStore['optic_leaves'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -366,7 +364,7 @@ export default function HRModule({
   });
 
   const [adjustments, setAdjustments] = useState<Adjustment[]>(() => {
-    const saved = localStorage.getItem('optic_adjustments');
+    const saved = globalMemoryStore['optic_adjustments'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -378,7 +376,7 @@ export default function HRModule({
 
   // Initial Salaries / Payslips for current period (Juin 2026) in FCFA
   const [payslips, setPayslips] = useState<Payslip[]>(() => {
-    const saved = localStorage.getItem('optic_payslips');
+    const saved = globalMemoryStore['optic_payslips'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -389,15 +387,21 @@ export default function HRModule({
   });
 
   useEffect(() => {
-    localStorage.setItem('optic_leaves', JSON.stringify(leaves));
+    const serialized = JSON.stringify(leaves);
+    globalMemoryStore['optic_leaves'] = serialized;
+    syncCollectionToSupabase('optic_leaves', serialized).catch(() => {});
   }, [leaves]);
 
   useEffect(() => {
-    localStorage.setItem('optic_adjustments', JSON.stringify(adjustments));
+    const serialized = JSON.stringify(adjustments);
+    globalMemoryStore['optic_adjustments'] = serialized;
+    syncCollectionToSupabase('optic_adjustments', serialized).catch(() => {});
   }, [adjustments]);
 
   useEffect(() => {
-    localStorage.setItem('optic_payslips', JSON.stringify(payslips));
+    const serialized = JSON.stringify(payslips);
+    globalMemoryStore['optic_payslips'] = serialized;
+    syncCollectionToSupabase('optic_payslips', serialized).catch(() => {});
   }, [payslips]);
 
   // RELATIONAL SUPABASE SYNC HOOKS & DATABASE LOADER
@@ -435,6 +439,12 @@ export default function HRModule({
 
   React.useEffect(() => {
     loadDataFromDb();
+    const interval = setInterval(loadDataFromDb, 2000);
+    window.addEventListener('storage', loadDataFromDb);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', loadDataFromDb);
+    };
   }, []);
 
   // Auto-sync updates to Supabase
@@ -1468,7 +1478,7 @@ export default function HRModule({
     setEditEmpEmail(emp.email || '');
     setEditEmpPhone(emp.phone || '');
     setEditEmpSalary(String(emp.basicSalary) || '');
-    setEditEmpBoutique(emp.boutique || 'Agence Alpha');
+    setEditEmpBoutique(emp.boutique || (emp.department === 'Administration' ? 'Direction' : ''));
     setEditEmpPhoto(emp.photo || '');
     setEditEmpPinCode(emp.pinCode || '');
     setEditEmpStatus(emp.status || 'Actif');
@@ -1481,8 +1491,13 @@ export default function HRModule({
     e.preventDefault();
     if (!editingEmployee) return;
 
-    if (!editEmpFirst || !editEmpLast || !editEmpEmail || !editEmpPhone || !editEmpSalary || !editEmpBoutique || !editEmpPosition || !editEmpPinCode) {
-      triggerAlert("Veuillez remplir tous les champs obligatoires (notamment le poste, l'affectation et le code PIN).");
+    const effectiveBoutique = editEmpDept === 'Administration' ? 'Direction' : editEmpBoutique;
+    if (!editEmpFirst || !editEmpLast || !editEmpEmail || !editEmpPhone || !editEmpSalary || !effectiveBoutique || !editEmpPosition || !editEmpPinCode) {
+      triggerAlert(
+        editEmpDept === 'Administration'
+          ? "Veuillez remplir tous les champs obligatoires (notamment le poste et le code PIN)."
+          : "Veuillez remplir tous les champs obligatoires (notamment le poste, l'affectation et le code PIN)."
+      );
       return;
     }
     const emailLower = editEmpEmail.toLowerCase().trim();
@@ -1535,7 +1550,7 @@ export default function HRModule({
           phone: editEmpPhone,
           basicSalary: salary,
           status: editEmpStatus,
-          boutique: editEmpBoutique,
+          boutique: effectiveBoutique,
           photo: editEmpPhoto,
           pinCode: editEmpPinCode,
           birthDate: parsedBirthDate,
@@ -1579,7 +1594,9 @@ export default function HRModule({
     const empName = `${employeeToDelete.firstName} ${employeeToDelete.lastName.toUpperCase()}`;
     const nextEmployees = employees.filter(e => e.id !== empId);
     setEmployees(nextEmployees);
-    localStorage.setItem('optic_hr_employees', JSON.stringify(nextEmployees));
+    const serialized = JSON.stringify(nextEmployees);
+    globalMemoryStore['optic_hr_employees'] = serialized;
+    syncCollectionToSupabase('optic_hr_employees', serialized).catch(() => {});
     window.dispatchEvent(new Event('storage'));
     triggerSuccess(currentLanguage === 'FR' ? `Collaborateur ${empName} supprimé de la base RH avec succès !` : `Collaborator ${empName} deleted from HR database successfully!`);
     setEmployeeToDelete(null);
@@ -1597,8 +1614,16 @@ export default function HRModule({
 
   // --- COMPUTES & CHARTS DATA ---
   const aggregatedPayrollCost = useMemo(() => {
-    return payslips.filter(p => p.paymentStatus === 'Payé').reduce((sum, p) => sum + p.netSalary, 0);
-  }, [payslips]);
+    const activeEmployees = employees.filter(emp => emp.status === 'Actif' || emp.status === 'ACTIVE');
+    const baseSalaries = activeEmployees.reduce((sum, emp) => sum + (emp.basicSalary || 0), 0);
+    
+    const currentPayslips = payslips.filter(p => p.period?.includes('Juin') || p.period?.includes('June') || p.period?.includes('06/2026'));
+    if (currentPayslips.length > 0) {
+      return currentPayslips.reduce((sum, p) => sum + (p.netSalary || p.basicSalary || 0), 0);
+    }
+    
+    return baseSalaries;
+  }, [employees, payslips]);
 
   const departmentStaffDistribution = useMemo(() => {
     const counts: Record<string, number> = { Magasin: 0, 'Atelier Clavetage': 0, Consultation: 0, Administration: 0 };
@@ -1635,8 +1660,13 @@ export default function HRModule({
   
   const handleCreateEmployee = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmpFirst || !newEmpLast || !newEmpEmail || !newEmpPhone || !newEmpSalary || !newEmpBoutique || !newEmpPosition || !newEmpPinCode) {
-      triggerAlert("Veuillez remplir tous les champs obligatoires (notamment le poste, la boutique d'affectation et le code PIN de l'employé).");
+    const effectiveBoutique = newEmpDept === 'Administration' ? 'Direction' : newEmpBoutique;
+    if (!newEmpFirst || !newEmpLast || !newEmpEmail || !newEmpPhone || !newEmpSalary || !effectiveBoutique || !newEmpPosition || !newEmpPinCode) {
+      triggerAlert(
+        newEmpDept === 'Administration'
+          ? "Veuillez remplir tous les champs obligatoires (notamment le poste et le code PIN de l'employé)."
+          : "Veuillez remplir tous les champs obligatoires (notamment le poste, la boutique d'affectation et le code PIN de l'employé)."
+      );
       return;
     }
     const emailLower = newEmpEmail.toLowerCase().trim();
@@ -1734,7 +1764,7 @@ export default function HRModule({
       hireDate: parsedHireDate,
       basicSalary: salary,
       status: 'Actif',
-      boutique: newEmpBoutique || 'Agence Alpha',
+      boutique: effectiveBoutique,
       photo: newEmpPhoto || '',
       photoAngles: newEmpPhotoAngles,
       pinCode: newEmpPinCode,
@@ -1826,7 +1856,7 @@ export default function HRModule({
       checkOutTime: newAttStatus === 'Absent' ? '--:--' : '17:30',
       notes: newAttNotes,
       photo: capturedSelfie,
-      boutique: targetEmp.boutique || 'Agence Alpha',
+      boutique: targetEmp.boutique || 'Direction',
       gpsCoords: gpsStr,
       facialMatchScore: facialMatchScore || undefined
     };
@@ -1853,7 +1883,7 @@ export default function HRModule({
       emp.lastName,
       emp.position,
       emp.department,
-      emp.boutique || 'Agence Alpha',
+      emp.boutique || 'Direction',
       emp.email,
       emp.phone,
       emp.salary || 'N/A'
@@ -1921,7 +1951,7 @@ export default function HRModule({
       let entryBoutique = entry.boutique;
       if (!entryBoutique) {
         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
+        entryBoutique = matchingEmp?.boutique || 'Direction';
       }
       const matchesBoutique = exportBoutique === 'all' || entryBoutique === exportBoutique;
 
@@ -1955,7 +1985,7 @@ export default function HRModule({
       let entryBoutique = entry.boutique;
       if (!entryBoutique) {
         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
+        entryBoutique = matchingEmp?.boutique || 'Direction';
       }
       return [
         entry.id,
@@ -2934,7 +2964,8 @@ class HrDashboardView extends ConsumerWidget {
               <button
                 onClick={() => {
                   setAttendance([]);
-                  localStorage.setItem('optic_attendance_ledger', JSON.stringify([]));
+                  globalMemoryStore['optic_attendance_ledger'] = '[]';
+                  syncCollectionToSupabase('optic_attendance_ledger', '[]').catch(() => {});
                   triggerSuccess(currentLanguage === 'FR' ? "Le registre d'émargement et le taux de présence ont été réinitialisés à zéro." : "Attendance ledger and presence rate have been reset to zero.");
                 }}
                 className="opacity-0 group-hover:opacity-100 transition duration-200 px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[9px] font-bold rounded cursor-pointer border border-rose-200"
@@ -2978,7 +3009,7 @@ class HrDashboardView extends ConsumerWidget {
             <DollarSign className="w-4 h-4 text-indigo-600" />
           </div>
           <div>
-            <div className="text-2xl font-display font-bold text-indigo-950">{aggregatedPayrollCost.toLocaleString()} FCFA</div>
+            <div className="text-2xl font-display font-bold text-indigo-950">{Math.round(aggregatedPayrollCost).toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 0 })} FCFA</div>
             <div className="text-[10px] text-indigo-700 font-medium font-sans">Mois en cours : Juin 2026</div>
           </div>
         </div>
@@ -3118,7 +3149,7 @@ class HrDashboardView extends ConsumerWidget {
                   <div className="border-t border-slate-100 mt-4 pt-3 space-y-2 text-xs">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Agence Affectée :</span>
-                      <span className="font-semibold text-slate-700 truncate max-w-[150px]">{emp.boutique || 'Agence Alpha'}</span>
+                      <span className="font-semibold text-slate-700 truncate max-w-[150px]">{emp.boutique || 'Direction'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Département :</span>
@@ -3903,7 +3934,7 @@ class HrDashboardView extends ConsumerWidget {
                       let entryBoutique = entry.boutique;
                       if (!entryBoutique) {
                         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-                        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
+                        entryBoutique = matchingEmp?.boutique || 'Direction';
                       }
                       const matchesBoutique = exportBoutique === 'all' || entryBoutique === exportBoutique;
                       const matchesEmployee = exportEmployee === 'all' || entry.employeeId === exportEmployee;
@@ -3914,7 +3945,7 @@ class HrDashboardView extends ConsumerWidget {
                       let entryBoutique = entry.boutique;
                       if (!entryBoutique) {
                         const matchingEmp = employees.find(e => e.id === entry.employeeId);
-                        entryBoutique = matchingEmp?.boutique || 'Agence Alpha';
+                        entryBoutique = matchingEmp?.boutique || 'Direction';
                       }
                       return (
                         <tr key={entry.id} className="border-b hover:bg-slate-50">
@@ -4390,20 +4421,28 @@ class HrDashboardView extends ConsumerWidget {
                       <option value="Magasin">Magasin</option>
                       <option value="Atelier Clavetage">Atelier</option>
                       <option value="Consultation">Consultation</option>
+                      <option value="Commercial">Commercial</option>
                       <option value="Administration">Administration</option>
                     </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Affectation Agence *</label>
                     <select 
-                      value={newEmpBoutique}
+                      value={newEmpDept === 'Administration' ? 'Direction' : newEmpBoutique}
                       onChange={e => setNewEmpBoutique(e.target.value)}
-                      className="w-full bg-[#F5F7FA] border border-[#DDE3EA] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#00BCD4]"
+                      disabled={newEmpDept === 'Administration'}
+                      className="w-full bg-[#F5F7FA] border border-[#DDE3EA] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#00BCD4] disabled:opacity-75 disabled:bg-slate-100 disabled:cursor-not-allowed"
                     >
-                      <option value="">-- Sélectionner --</option>
-                      {availableBranches.map(b => (
-                        <option key={b.id} value={b.name}>{b.name}</option>
-                      ))}
+                      {newEmpDept === 'Administration' ? (
+                        <option value="Direction">Direction (Automatique)</option>
+                      ) : (
+                        <>
+                          <option value="">-- Sélectionner --</option>
+                          {availableBranches.map(b => (
+                            <option key={b.id} value={b.name}>{b.name}</option>
+                          ))}
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -5109,7 +5148,7 @@ class HrDashboardView extends ConsumerWidget {
                       {selectedIdCardEmployee.position}
                     </p>
                     <p className="text-[9px] font-mono text-slate-300 mt-1 leading-none">
-                      {selectedIdCardEmployee.boutique || 'Agence Alpha'}
+                      {selectedIdCardEmployee.boutique || 'Direction'}
                     </p>
                     <p className="text-[9px] font-mono text-slate-400 mt-1 leading-none">
                       Département : {selectedIdCardEmployee.department}
@@ -5284,7 +5323,7 @@ class HrDashboardView extends ConsumerWidget {
                           </div>
                           <div class="name">${selectedIdCardEmployee.firstName} ${selectedIdCardEmployee.lastName}</div>
                           <div class="position">${selectedIdCardEmployee.position}</div>
-                          <div class="dept">Agence : ${selectedIdCardEmployee.boutique || 'Agence Alpha'}</div>
+                          <div class="dept">Agence : ${selectedIdCardEmployee.boutique || 'Direction'}</div>
                           <div class="dept" style="color: #9ca3af; font-size: 9px; margin-top: 2px;">Département : ${selectedIdCardEmployee.department}</div>
                         </div>
                         <div class="footer">
@@ -5498,20 +5537,28 @@ class HrDashboardView extends ConsumerWidget {
                       <option value="Magasin">Magasin</option>
                       <option value="Atelier Clavetage">Atelier Clavetage</option>
                       <option value="Consultation">Consultation</option>
+                      <option value="Commercial">Commercial</option>
                       <option value="Administration">Administration</option>
                     </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Affectation Agence *</label>
                     <select 
-                      value={editEmpBoutique}
+                      value={editEmpDept === 'Administration' ? 'Direction' : editEmpBoutique}
                       onChange={e => setEditEmpBoutique(e.target.value)}
-                      className="w-full bg-[#F5F7FA] border border-[#DDE3EA] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#00BCD4]"
+                      disabled={editEmpDept === 'Administration'}
+                      className="w-full bg-[#F5F7FA] border border-[#DDE3EA] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#00BCD4] disabled:opacity-75 disabled:bg-slate-100 disabled:cursor-not-allowed"
                     >
-                      <option value="">-- Sélectionner --</option>
-                      {availableBranches.map(b => (
-                        <option key={b.id} value={b.name}>{b.name}</option>
-                      ))}
+                      {editEmpDept === 'Administration' ? (
+                        <option value="Direction">Direction (Automatique)</option>
+                      ) : (
+                        <>
+                          <option value="">-- Sélectionner --</option>
+                          {availableBranches.map(b => (
+                            <option key={b.id} value={b.name}>{b.name}</option>
+                          ))}
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -5686,7 +5733,7 @@ class HrDashboardView extends ConsumerWidget {
                     </div>
                     <div>
                       <span className="text-[10px] text-slate-400 block font-semibold">Agence d'Affectation</span>
-                      <span className="font-black text-[#0097A7]">{viewingEmployee.boutique || 'Agence Alpha'}</span>
+                      <span className="font-black text-[#0097A7]">{viewingEmployee.boutique || 'Direction'}</span>
                     </div>
                     <div>
                       <span className="text-[10px] text-slate-400 block font-semibold">E-mail Professionnel</span>

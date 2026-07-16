@@ -46,6 +46,65 @@ if (envUrl && envAnonKey) {
   console.log('[SUPABASE] Pending configuration.');
 }
 
+const memoryStore: Record<string, string> = {};
+
+export const safeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (isBusinessKey(key)) {
+        return globalMemoryStore[key] !== undefined ? globalMemoryStore[key] : null;
+      }
+      if (typeof window !== 'undefined') {
+        return localStorage.getItem(key);
+      }
+    } catch (e) {}
+    return Object.prototype.hasOwnProperty.call(memoryStore, key) ? memoryStore[key] : null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (isBusinessKey(key)) {
+        globalMemoryStore[key] = value;
+        syncCollectionToSupabase(key, value).catch(() => {});
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(key, value);
+        return;
+      }
+    } catch (e) {}
+    memoryStore[key] = String(value);
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (isBusinessKey(key)) {
+        delete globalMemoryStore[key];
+        syncCollectionToSupabase(key, '[]').catch(() => {});
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(key);
+        return;
+      }
+    } catch (e) {}
+    delete memoryStore[key];
+  },
+  key: (index: number): string | null => {
+    try {
+      if (typeof window !== 'undefined') {
+        return localStorage.key(index);
+      }
+    } catch (e) {}
+    const keys = Object.keys(memoryStore);
+    return keys[index] || null;
+  },
+  getLength: (): number => {
+    try {
+      if (typeof window !== 'undefined') {
+        return localStorage.length;
+      }
+    } catch (e) {}
+    return Object.keys(memoryStore).length;
+  }
+};
+
 export function isSupabaseConfigured(): boolean {
   return supabaseClient !== null;
 }
@@ -92,7 +151,10 @@ export function subscribeToSyncState(callback: (state: SyncState) => void) {
 
 export function updateSyncState(newState: Partial<SyncState>) {
   globalSyncState = { ...globalSyncState, ...newState };
-  syncStateCallbacks.forEach(cb => cb(globalSyncState));
+  // Defer execution of callbacks to prevent React "Cannot update during render" errors
+  setTimeout(() => {
+    syncStateCallbacks.forEach(cb => cb(globalSyncState));
+  }, 0);
 }
 
 /**
@@ -164,6 +226,12 @@ export const SYNCABLE_KEYS = [
 ];
 
 export const MAPPED_KEYS: Record<string, string> = {
+  'optic_users': 'users_profiles',
+  'optic_hr_employees': 'employees',
+  'optic_attendance_ledger': 'attendance',
+  'optic_leaves': 'leaves',
+  'optic_adjustments': 'adjustments',
+  'optic_payslips': 'payslips',
   'optic_crm_customers': 'crm_customers',
   'optic_fused_catalog': 'fused_catalog',
   'optic_saas_orders': 'saas_orders',
@@ -172,73 +240,110 @@ export const MAPPED_KEYS: Record<string, string> = {
   'optic_my_clinic_exams': 'my_clinic_exams',
   'optic_my_prescriptions': 'my_prescriptions',
   'optic_hq_companies': 'hq_companies',
-  'optic_hq_branches': 'hq_branches'
+  'optic_hq_branches': 'hq_branches',
+  'optic_invoices': 'invoices',
+  'optic_customers': 'customers',
+  'optic_products': 'products',
+  'optic_suppliers': 'suppliers',
+  'optic_inventory': 'inventory',
+  'optic_accounting_revenues': 'accounting_revenues',
+  'optic_accounting_expenses': 'accounting_expenses',
+  'optic_accounting_momo': 'accounting_mobile_money',
+  'optic_stock_items': 'stock_items',
+  'optic_stock_history': 'stock_history',
+  'optic_sav_claims': 'sav_claims',
+  'optic_push_logs': 'push_logs',
+  'optic_my_commandes': 'my_commandes',
+  'optic_vouchers_list': 'vouchers_list',
+  'optic_backups_list': 'backups_list',
+  'optic_hq_zones': 'zones',
+  'optic_hq_pending_orders': 'hq_pending_orders',
+  'optic_hq_branch_modules': 'hq_branch_modules'
 };
 
-// Override Storage Prototype globally to trap business data operations
+// Override Storage Prototype globally to trap business data operations with bulletproof exception protection
 if (typeof window !== 'undefined') {
-  const originalGetItem = Storage.prototype.getItem;
-  const originalSetItem = Storage.prototype.setItem;
-  const originalRemoveItem = Storage.prototype.removeItem;
+  try {
+    const originalGetItem = Storage.prototype.getItem;
+    const originalSetItem = Storage.prototype.setItem;
+    const originalRemoveItem = Storage.prototype.removeItem;
 
-  Storage.prototype.getItem = function (key: string): string | null {
-    if (isBusinessKey(key)) {
-      return globalMemoryStore[key] !== undefined ? globalMemoryStore[key] : null;
-    }
-    return originalGetItem.apply(this, [key]);
-  };
+    Storage.prototype.getItem = function (key: string): string | null {
+      try {
+        if (isBusinessKey(key)) {
+          return globalMemoryStore[key] !== undefined ? globalMemoryStore[key] : null;
+        }
+        return originalGetItem.apply(this, [key]);
+      } catch (e) {
+        console.warn(`[SECURITY] Storage.prototype.getItem blocked for key "${key}". Falling back to memory.`, e);
+        return globalMemoryStore[key] !== undefined ? globalMemoryStore[key] : null;
+      }
+    };
 
-  Storage.prototype.setItem = function (key: string, value: string) {
-    if (isBusinessKey(key)) {
-      globalMemoryStore[key] = value;
-      updateSyncState({ status: 'saving' });
-      
-      syncCollectionToSupabase(key, value)
-        .then(success => {
-          if (success) {
-            updateSyncState({
-              status: 'synced',
-              error: null,
-              lastSyncedAt: new Date().toLocaleTimeString()
+    Storage.prototype.setItem = function (key: string, value: string) {
+      try {
+        if (isBusinessKey(key)) {
+          globalMemoryStore[key] = value;
+          updateSyncState({ status: 'saving' });
+          
+          syncCollectionToSupabase(key, value)
+            .then(success => {
+              if (success) {
+                updateSyncState({
+                  status: 'synced',
+                  error: null,
+                  lastSyncedAt: new Date().toLocaleTimeString()
+                });
+              } else {
+                updateSyncState({
+                  status: 'error',
+                  error: `Échec d'enregistrement pour : ${key}`
+                });
+              }
+            })
+            .catch(err => {
+              updateSyncState({
+                status: 'error',
+                error: err.message || `Erreur de connexion lors de la sauvegarde de ${key}`
+              });
             });
-          } else {
-            updateSyncState({
-              status: 'error',
-              error: `Échec d'enregistrement pour : ${key}`
-            });
-          }
-        })
-        .catch(err => {
-          updateSyncState({
-            status: 'error',
-            error: err.message || `Erreur de connexion lors de la sauvegarde de ${key}`
-          });
-        });
 
-      window.dispatchEvent(new Event('storage'));
-      return;
-    }
-    originalSetItem.apply(this, [key, value]);
-  };
+          window.dispatchEvent(new Event('storage'));
+          return;
+        }
+        originalSetItem.apply(this, [key, value]);
+      } catch (e) {
+        console.warn(`[SECURITY] Storage.prototype.setItem blocked for key "${key}". Falling back to memory.`, e);
+        globalMemoryStore[key] = value;
+      }
+    };
 
-  Storage.prototype.removeItem = function (key: string) {
-    if (isBusinessKey(key)) {
-      delete globalMemoryStore[key];
-      updateSyncState({ status: 'saving' });
-      syncCollectionToSupabase(key, '[]')
-        .then(() => {
-          updateSyncState({
-            status: 'synced',
-            error: null,
-            lastSyncedAt: new Date().toLocaleTimeString()
-          });
-        })
-        .catch(() => {});
-      window.dispatchEvent(new Event('storage'));
-      return;
-    }
-    originalRemoveItem.apply(this, [key]);
-  };
+    Storage.prototype.removeItem = function (key: string) {
+      try {
+        if (isBusinessKey(key)) {
+          delete globalMemoryStore[key];
+          updateSyncState({ status: 'saving' });
+          syncCollectionToSupabase(key, '[]')
+            .then(() => {
+              updateSyncState({
+                status: 'synced',
+                error: null,
+                lastSyncedAt: new Date().toLocaleTimeString()
+              });
+            })
+            .catch(() => {});
+          window.dispatchEvent(new Event('storage'));
+          return;
+        }
+        originalRemoveItem.apply(this, [key]);
+      } catch (e) {
+        console.warn(`[SECURITY] Storage.prototype.removeItem blocked for key "${key}". Falling back to memory.`, e);
+        delete globalMemoryStore[key];
+      }
+    };
+  } catch (err) {
+    console.error('[SECURITY] Critical: Failed to override Storage.prototype properties.', err);
+  }
 }
 
 /**
@@ -258,7 +363,7 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
     }
 
     const tableName = MAPPED_KEYS[key];
-    const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+    const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
     let syncSuccess = false;
 
     if (tableName && !missingTables[tableName]) {
@@ -301,10 +406,17 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
             mappedItem = mapped?.data?.value || item;
           }
 
+          let safeMappedItem = mappedItem;
+          try {
+            safeMappedItem = JSON.parse(JSON.stringify(mappedItem));
+          } catch (e) {
+            console.warn('[SUPABASE SYNC] JSON sanitization failed for table sync:', e);
+          }
+
           const payload = {
             id: String(itemId),
             boutique_name: boutiqueName,
-            data: { value: mappedItem },
+            data: { value: safeMappedItem },
             updated_at: new Date().toISOString()
           };
 
@@ -356,28 +468,44 @@ export async function syncCollectionToSupabase(key: string, data: any): Promise<
         return item;
       }) : cleanData;
 
-      let { error } = await supabaseClient
+      let safePayloadData: any = mappedCleanData;
+      try {
+        safePayloadData = JSON.parse(JSON.stringify(mappedCleanData));
+      } catch (e) {
+        console.warn('[SUPABASE SYNC] JSON sanitization failed for fallback:', e);
+      }
+
+      const { error: firstError } = await supabaseClient
         .from('opticalize_sync')
         .upsert({
           collection_name: key,
           boutique_name: boutiqueName,
-          data: { value: mappedCleanData },
+          data: { value: safePayloadData },
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'collection_name,boutique_name'
         });
 
+      let error = firstError;
+
       if (error) {
+        console.warn(`[SUPABASE SYNC] First upsert attempt for "${key}" on conflict (collection_name,boutique_name) failed. Error:`, firstError);
         const retryResult = await supabaseClient
           .from('opticalize_sync')
           .upsert({
             collection_name: key,
-            data: { value: mappedCleanData },
+            data: { value: safePayloadData },
             updated_at: new Date().toISOString()
           }, {
             onConflict: 'collection_name'
           });
-        error = retryResult.error;
+        
+        if (!retryResult.error) {
+          error = null; // Retry succeeded!
+        } else {
+          console.warn(`[SUPABASE SYNC] Retry upsert attempt for "${key}" on conflict (collection_name) also failed. Error:`, retryResult.error);
+          error = firstError; // Fall back to displaying the primary more specific error
+        }
       }
 
       if (!error) {
@@ -405,7 +533,7 @@ export async function loadCollectionFromSupabase(key: string): Promise<any | nul
   if (!supabaseClient) return null;
 
   const tableName = MAPPED_KEYS[key];
-  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+  const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
 
   try {
     if (tableName && !missingTables[tableName]) {
@@ -469,12 +597,11 @@ export function initializeAutomaticSupabaseSync() {
     return;
   }
   // Remove any business keys stored physically in localStorage to comply with instructions
-  if (typeof window !== 'undefined') {
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key && isBusinessKey(key)) {
-        localStorage.removeItem(key);
-      }
+  const len = safeLocalStorage.getLength();
+  for (let i = len - 1; i >= 0; i--) {
+    const key = safeLocalStorage.key(i);
+    if (key && isBusinessKey(key)) {
+      safeLocalStorage.removeItem(key);
     }
   }
   console.log('[SUPABASE AUTO-SYNC] Cleaned physical local storage from all business operational data.');
@@ -493,7 +620,7 @@ export async function pullAllCollectionsFromSupabase(): Promise<boolean> {
   console.log('[SUPABASE PULL] Synchronizing all operational modules directly from Supabase...');
   
   try {
-    const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+    const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
     let updatedAny = false;
 
     // 1. Pull dedicated mapped tables
@@ -633,4 +760,97 @@ CREATE TABLE IF NOT EXISTS public.opticalize_sync (
 ALTER TABLE public.opticalize_sync ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public full access" ON public.opticalize_sync FOR ALL USING (true) WITH CHECK (true);
   `;
+}
+
+/**
+ * Debits a stock item in real-time from the 'optic_stock_items' collection.
+ * It also inserts a log into 'optic_stock_history' to record the event.
+ */
+export async function debitStockItem(barcodeOrName: string, qtyToSubtract: number, details: string): Promise<boolean> {
+  if (!barcodeOrName) return false;
+  
+  try {
+    const savedStr = safeLocalStorage.getItem('optic_stock_items') || globalMemoryStore['optic_stock_items'];
+    let stockItems: any[] = [];
+    if (savedStr) {
+      try {
+        const parsed = JSON.parse(savedStr);
+        if (Array.isArray(parsed)) stockItems = parsed;
+      } catch (e) {}
+    }
+
+    if (stockItems.length === 0) {
+      const dbItems = await loadCollectionFromSupabase('optic_stock_items');
+      if (dbItems) {
+        const parsed = typeof dbItems === 'string' ? JSON.parse(dbItems) : dbItems;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          stockItems = parsed;
+        }
+      }
+    }
+
+    if (stockItems.length === 0) {
+      console.warn("[DEBIT STOCK] No stock items available to debit.");
+      return false;
+    }
+
+    const lookup = String(barcodeOrName).trim().toLowerCase();
+    let matchedItem = stockItems.find(item => item && item.barcode && String(item.barcode).trim() === lookup);
+    if (!matchedItem) {
+      matchedItem = stockItems.find(item => item && item.name && String(item.name).trim().toLowerCase() === lookup);
+    }
+    if (!matchedItem) {
+      matchedItem = stockItems.find(item => item && item.name && String(item.name).trim().toLowerCase().includes(lookup));
+    }
+    if (!matchedItem) {
+      matchedItem = stockItems.find(item => item && item.id && String(item.id).trim().toLowerCase() === lookup);
+    }
+
+    if (!matchedItem) {
+      console.warn(`[DEBIT STOCK] No matching stock item found for query: ${barcodeOrName}`);
+      return false;
+    }
+
+    const oldQty = Number(matchedItem.qty) || 0;
+    const newQty = Math.max(0, oldQty - qtyToSubtract);
+    matchedItem.qty = newQty;
+
+    const serializedItems = JSON.stringify(stockItems);
+    safeLocalStorage.setItem('optic_stock_items', serializedItems);
+    globalMemoryStore['optic_stock_items'] = serializedItems;
+    await syncCollectionToSupabase('optic_stock_items', serializedItems).catch(() => {});
+
+    const savedHistoryStr = safeLocalStorage.getItem('optic_stock_history') || globalMemoryStore['optic_stock_history'];
+    let historyEvents: any[] = [];
+    if (savedHistoryStr) {
+      try {
+        const parsed = JSON.parse(savedHistoryStr);
+        if (Array.isArray(parsed)) historyEvents = parsed;
+      } catch (e) {}
+    }
+
+    const newEvent = {
+      id: `evt-deb-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: new Date().toISOString(),
+      type: 'SORTIE',
+      productName: matchedItem.name,
+      qtyChange: -qtyToSubtract,
+      detail: details,
+      operator: safeLocalStorage.getItem('optic_user_email')?.split('@')[0] || 'Système',
+      status: 'Complété'
+    };
+
+    historyEvents.unshift(newEvent);
+    const serializedHistory = JSON.stringify(historyEvents);
+    safeLocalStorage.setItem('optic_stock_history', serializedHistory);
+    globalMemoryStore['optic_stock_history'] = serializedHistory;
+    await syncCollectionToSupabase('optic_stock_history', serializedHistory).catch(() => {});
+
+    window.dispatchEvent(new Event('storage'));
+    console.log(`[DEBIT STOCK] Successfully debited ${qtyToSubtract} from ${matchedItem.name}. New qty: ${newQty}`);
+    return true;
+  } catch (err) {
+    console.error("[DEBIT STOCK] Error debiting stock item:", err);
+    return false;
+  }
 }

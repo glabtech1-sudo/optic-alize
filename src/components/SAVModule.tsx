@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeLocalStorage as localStorage, globalMemoryStore, syncCollectionToSupabase, loadCollectionFromSupabase } from '../lib/supabaseSync';
 import { 
   Shield, Sliders, RefreshCw, Send, Plus, Search, 
   Terminal, Play, Clock, AlertTriangle, HelpCircle,
@@ -54,7 +55,7 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
 
   // Initial claims augmented with contact details and branch
   const [savClaims, setSavClaims] = useState<any[]>(() => {
-    const saved = localStorage.getItem('optic_sav_claims');
+    const saved = globalMemoryStore['optic_sav_claims'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -65,7 +66,9 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
   });
 
   React.useEffect(() => {
-    localStorage.setItem('optic_sav_claims', JSON.stringify(savClaims));
+    const serialized = JSON.stringify(savClaims);
+    globalMemoryStore['optic_sav_claims'] = serialized;
+    syncCollectionToSupabase('optic_sav_claims', serialized).catch(() => {});
   }, [savClaims]);
 
   const [claimClient, setClaimClient] = useState('');
@@ -77,14 +80,11 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
       const saved = localStorage.getItem('optic_hq_branches');
       if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
     return [
-      { id: 'Paris Nation', name: 'Paris Nation' },
-      { id: 'Bordeaux Centre', name: 'Bordeaux Centre' },
-      { id: 'Marseille Vieux-Port', name: 'Marseille Vieux-Port' },
-      { id: 'Dakar Fann', name: 'Dakar Fann' }
+      { id: 'dir', name: 'Optic Alizé - DIRECTION' }
     ];
   });
 
@@ -96,7 +96,7 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
         if (Array.isArray(parsed) && parsed.length > 0) return parsed[0].name;
       }
     } catch (e) {}
-    return '';
+    return 'Optic Alizé - DIRECTION';
   });
 
   React.useEffect(() => {
@@ -111,8 +111,13 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
         }
       } catch (e) {}
     };
+    handleStorageChange();
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    const interval = setInterval(handleStorageChange, 2000);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
   }, []);
 
   const [claimPhone, setClaimPhone] = useState('');
@@ -144,7 +149,7 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
   const [pushBody, setPushBody] = useState('Votre monture de lunettes personnalisée est prête à être récupérée en boutique.');
   const [pushTarget, setPushTarget] = useState('ALL');
   const [pushLogs, setPushLogs] = useState<any[]>(() => {
-    const saved = localStorage.getItem('optic_push_logs');
+    const saved = globalMemoryStore['optic_push_logs'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -155,8 +160,36 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
   });
 
   React.useEffect(() => {
-    localStorage.setItem('optic_push_logs', JSON.stringify(pushLogs));
+    const serialized = JSON.stringify(pushLogs);
+    globalMemoryStore['optic_push_logs'] = serialized;
+    syncCollectionToSupabase('optic_push_logs', serialized).catch(() => {});
   }, [pushLogs]);
+
+  React.useEffect(() => {
+    let active = true;
+    const loadData = async () => {
+      try {
+        const dbClaims = await loadCollectionFromSupabase('optic_sav_claims');
+        if (dbClaims && active) {
+          const parsed = typeof dbClaims === 'string' ? JSON.parse(dbClaims) : dbClaims;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSavClaims(parsed);
+          }
+        }
+        const dbPush = await loadCollectionFromSupabase('optic_push_logs');
+        if (dbPush && active) {
+          const parsed = typeof dbPush === 'string' ? JSON.parse(dbPush) : dbPush;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setPushLogs(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('[SAVModule] Direct Supabase fetch failed:', e);
+      }
+    };
+    loadData();
+    return () => { active = false; };
+  }, []);
 
   // Handle SKU warranty verification
   const handleVerifyWarranty = (e: React.FormEvent) => {
@@ -505,10 +538,11 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
                 className="w-full text-xs font-bold p-2 bg-white rounded-lg border border-slate-200 cursor-pointer text-slate-800"
               >
                 <option value="All">{currentLanguage === 'FR' ? 'Toutes les Agences d\'Atelier' : 'All Workshop Branches'}</option>
-                <option value="Paris Nation">Paris Nation</option>
-                <option value="Bordeaux Centre">Bordeaux Centre</option>
-                <option value="Marseille Vieux-Port">Marseille Vieux-Port</option>
-                <option value="Dakar Fann">Dakar Fann</option>
+                {agencies.map((agency) => (
+                  <option key={agency.id || agency.name} value={agency.name}>
+                    {agency.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -881,7 +915,7 @@ export default function SAVModule({ currentLanguage, currentCompany, isOffline, 
                     </p>
 
                     <div className="p-3.5 bg-slate-50 rounded-xl border font-mono text-[11px] text-slate-700 leading-relaxed font-bold">
-                      {communicationModal.type === 'SMS' && `[Optic Alizé] Bonjour ${communicationModal.clientName}, votre équipement optique S.A.V. est prêt à l'atelier Paris Nation. Merci de votre confiance !`}
+                      {communicationModal.type === 'SMS' && `[Optic Alizé] Bonjour ${communicationModal.clientName}, votre équipement optique S.A.V. est prêt à l'atelier ${claimBranch || 'Optic Alizé'}. Merci de votre confiance !`}
                       {communicationModal.type === 'WhatsApp' && `🟢 [Optic Alizé] Bonjour ${communicationModal.clientName} ! Votre dossier S.A.V est mis à jour. Nos opticiens ont validé votre garantie de monture.`}
                       {communicationModal.type === 'Email' && `Objet: Suivi réparation S.A.V — Votre dossier Optic Alizé\n\nChère client(e) ${communicationModal.clientName},\n\nNous vous informons de la bonne réparation de votre pièce d'optique dans notre laboratoire unifié.\n\nCordialement,\nL'Atelier Optic Alizé`}
                     </div>

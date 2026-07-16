@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { 
   Send, 
   Paperclip, 
@@ -87,12 +88,27 @@ interface ToastNotification {
   createdAt: string;
 }
 
-const PRESET_USERS = [
-  { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Agence Alpha' },
-  { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Agence Bêta' },
-  { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Agence Gamma' },
-  { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'DIRECTION' }
-];
+const getPresetUsers = () => {
+  let listAllBoutiques: string[] = [];
+  try {
+    const saved = localStorage.getItem('optic_hq_branches');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        listAllBoutiques = parsed.map(b => b.name);
+      }
+    }
+  } catch (e) {}
+
+  return [
+    { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: listAllBoutiques[0] ? `🏢 ${listAllBoutiques[0]}` : '🏢 Direction' },
+    { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: listAllBoutiques[1] ? `🏢 ${listAllBoutiques[1]}` : (listAllBoutiques[0] ? `🏢 ${listAllBoutiques[0]}` : '🏢 Direction') },
+    { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: listAllBoutiques[2] ? `🏢 ${listAllBoutiques[2]}` : (listAllBoutiques[0] ? `🏢 ${listAllBoutiques[0]}` : '🏢 Direction') },
+    { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'DIRECTION' }
+  ];
+};
+
+const PRESET_USERS = getPresetUsers();
 
 const PRESET_ATTACHMENTS: QuickAttachment[] = [
   { name: 'Scan_Ordonnance_Patient_Dupont.pdf', type: 'application/pdf', size: '420 KB', url: '#' },
@@ -134,7 +150,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       channelId: 'general',
       senderId: 'staff_1',
       senderName: 'Sophie (Opticienne-Conseil)',
-      senderShop: '🏢 Agence Alpha',
+      senderShop: PRESET_USERS[0].shop,
       content: "Bonjour l'équipe d'Optic Alizé ! Est-ce que le transfert de montures et verres progressifs depuis la DIRECTION a bien été validé ?",
       attachment: null,
       createdAt: new Date(Date.now() - 3600000 * 2.5).toISOString()
@@ -145,7 +161,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       channelId: 'general',
       senderId: 'staff_2',
       senderName: 'Jean-Marc (Montage Labo)',
-      senderShop: '🏢 Agence Bêta',
+      senderShop: PRESET_USERS[1].shop,
       content: "Oui Sophie ! C'est en cours. Le Gérant a procédé à l'approvisionnement des stocks de nos agences ce matin.",
       attachment: null,
       createdAt: new Date(Date.now() - 3600000 * 2.5).toISOString()
@@ -156,7 +172,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
       channelId: 'atelier',
       senderId: 'staff_2',
       senderName: 'Jean-Marc (Montage Labo)',
-      senderShop: '🏢 Agence Bêta',
+      senderShop: PRESET_USERS[1].shop,
       content: "Rappel laboratoire : Les meules automatiques ont été inspectées et calibrées pour les verres minéraux et organiques.",
       attachment: null,
       createdAt: new Date(Date.now() - 3600000 * 2.5).toISOString()
@@ -173,12 +189,7 @@ export default function WebSocketSimulator({ mode = 'messenger' }: WebSocketSimu
     }
   ]);
 
-  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([
-    { id: 'staff_1', username: 'Sophie (Opticienne-Conseil)', role: 'Directrice de Succursale', shop: '🏢 Agence Alpha' },
-    { id: 'staff_2', username: 'Jean-Marc (Montage Labo)', role: 'Opticien Technique', shop: '🏢 Agence Bêta' },
-    { id: 'staff_3', username: 'Marc (Conseil Externe)', role: 'Optométriste Diplômé', shop: '🏢 Agence Gamma' },
-    { id: 'staff_4', username: 'Alexandre (Administrateur)', role: 'Gérant Principal Optic Alizé', shop: 'DIRECTION' }
-  ]);
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>(PRESET_USERS);
 
   const [typingUsers, setTypingUsers] = useState<{ [key: string]: string }>({});
   const [toasts, setToasts] = useState<ToastNotification[]>([]);

@@ -5,9 +5,11 @@ import { extraArchFiles } from './data/extraArchitectureFiles';
 import { ArchFile } from './types/architecture';
 import { preloadLogoAndWatermark } from './utils/logoPreloader';
 import { fetchUsers, logoutUser } from './lib/api';
+import { safeLocalStorage } from './lib/supabaseSync';
 
 // Import our gorgeous newly created SaaS Views
 import LoginPage from './components/LoginPage';
+import LandingPage from './components/LandingPage';
 import MainDashboard from './components/MainDashboard';
 import SaaSUsers from './components/SaaSUsers';
 import SaaSOrders from './components/SaaSOrders';
@@ -23,6 +25,7 @@ import GestionOpticModule from './components/GestionOpticModule';
 import SuperAdminHQModule from './components/SuperAdminHQModule';
 import SuperAdminMonitor from './components/SuperAdminMonitor';
 import SupabaseSyncWidget from './components/SupabaseSyncWidget';
+import StockInventaireModule from './components/StockInventaireModule';
 
 // Import original modular sub-systems for fallback and reference
 import CRMModule from './components/CRMModule';
@@ -43,7 +46,7 @@ import {
   Search, Bell, User, Sun, Moon, Sparkles, Layers, Code, Database, Zap, 
   Sliders, ChevronRight, HelpCircle, Heart, Lock, CheckCircle, Compass, MessageSquare, Globe,
   ClipboardList, BookOpen, Building2, Calendar, UserCheck, Award, Smartphone, DownloadCloud, Wifi, WifiOff,
-  Menu, X, ShieldCheck
+  Menu, X, ShieldCheck, Boxes
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -73,6 +76,7 @@ type SaasTab =
   | 'commande'
   | 'journal'
   | 'gestion_optic'
+  | 'stock_inventaire'
   | 'super_admin_hq'
   | 'super_admin_monitor';
 
@@ -93,10 +97,10 @@ export default function App() {
   const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [currentLanguage, setCurrentLanguage] = useState<'FR' | 'EN'>(
-    () => (localStorage.getItem('optic_app_language') as 'FR' | 'EN') || 'FR'
+    () => (safeLocalStorage.getItem('optic_app_language') as 'FR' | 'EN') || 'FR'
   );
   useEffect(() => {
-    localStorage.setItem('optic_app_language', currentLanguage);
+    safeLocalStorage.setItem('optic_app_language', currentLanguage);
   }, [currentLanguage]);
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
@@ -163,19 +167,19 @@ export default function App() {
   const [isLoggedOut, setIsLoggedOut] = useState<boolean>(false);
 
   const [selectedThemeAccent, setSelectedThemeAccent] = useState<'blue' | 'indigo' | 'slate' | 'emerald'>(
-    () => (localStorage.getItem('optic_theme_accent') as any) || 'blue'
+    () => (safeLocalStorage.getItem('optic_theme_accent') as any) || 'blue'
   );
 
   const [companyEmail, setCompanyEmail] = useState(
-    () => localStorage.getItem('optic_company_email') || 'contact@opticalize.com'
+    () => safeLocalStorage.getItem('optic_company_email') || 'contact@opticalize.com'
   );
 
   const [companyPhone, setCompanyPhone] = useState(
-    () => localStorage.getItem('optic_company_phone') || '+228 90 00 00 00'
+    () => safeLocalStorage.getItem('optic_company_phone') || '+228 90 00 00 00'
   );
 
   const [appLogo, setAppLogo] = useState<string>(() => {
-    const saved = localStorage.getItem('optic_app_logo');
+    const saved = safeLocalStorage.getItem('optic_app_logo');
     if (!saved || saved.includes('optic_alize_logo') || saved.startsWith('/') || saved.startsWith('.') || saved.startsWith('assets/')) {
       return defaultLogoBase64;
     }
@@ -183,25 +187,25 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem('optic_theme_accent', selectedThemeAccent);
+    safeLocalStorage.setItem('optic_theme_accent', selectedThemeAccent);
   }, [selectedThemeAccent]);
 
   useEffect(() => {
-    localStorage.setItem('optic_company_email', companyEmail);
+    safeLocalStorage.setItem('optic_company_email', companyEmail);
   }, [companyEmail]);
 
   useEffect(() => {
-    localStorage.setItem('optic_company_phone', companyPhone);
+    safeLocalStorage.setItem('optic_company_phone', companyPhone);
   }, [companyPhone]);
 
   useEffect(() => {
-    localStorage.setItem('optic_app_logo', appLogo);
+    safeLocalStorage.setItem('optic_app_logo', appLogo);
     preloadLogoAndWatermark(appLogo);
   }, [appLogo]);
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      localStorage.setItem('optic_is_authenticated', 'false');
+      safeLocalStorage.setItem('optic_is_authenticated', 'false');
       setIsAuthenticated(false);
     };
     window.addEventListener('optic-unauthorized', handleUnauthorized);
@@ -211,38 +215,166 @@ export default function App() {
   }, []);
 
   const [currentUserEmail, setCurrentUserEmail] = useState<string>(
-    () => localStorage.getItem('optic_user_email') || 'glabtech1@opticalize.com'
+    () => {
+      try {
+        return safeLocalStorage.getItem('optic_user_email') || 'glabtech1@opticalize.com';
+      } catch (e) {
+        return 'glabtech1@opticalize.com';
+      }
+    }
   );
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      // Pour forcer l'affichage de la page de connexion au démarrage,
+      // on vérifie si la session active de l'onglet existe (sessionStorage).
+      // Si ce n'est pas le cas, on force la déconnexion en réinitialisant l'état
+      // afin que la page login s'affiche systématiquement à chaque démarrage.
+      if (typeof window !== 'undefined') {
+        const sessionActive = sessionStorage.getItem('optic_session_active') === 'true';
+        if (!sessionActive) {
+          safeLocalStorage.setItem('optic_is_authenticated', 'false');
+          safeLocalStorage.removeItem('optic_user_email');
+          return false;
+        }
+      }
+      return safeLocalStorage.getItem('optic_is_authenticated') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const [showLogin, setShowLogin] = useState<boolean>(false);
 
   // Synced User Database
   const [users, setUsers] = useState<any[]>(() => {
-    const saved = localStorage.getItem('optic_users');
     const defaults = [
       { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
       { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
-      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' }
+      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
+      { id: 'USR-SA-GLAB', name: 'Glabtech1 Super Admin', email: 'glabtech1@gmail.com', role: 'Super Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr', 'super_admin_monitor'], password: 'Gildas@00741' },
+      { id: 'USR-SA-GILDAS', name: 'Anges Gildas Super Admin', email: 'anges.gildas@gmail.com', role: 'Super Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr', 'super_admin_monitor'], password: 'Gildas@00741' }
     ];
-    if (saved) {
-      try {
+    try {
+      const saved = safeLocalStorage.getItem('optic_users');
+      if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           const clean = parsed.filter((u: any) => 
-            u && u.email &&
+            u && typeof u.email === 'string' &&
             (u.email.toLowerCase() === 'glabtech1@opticalize.com' ||
              u.email.toLowerCase() === 'anges.gildas@opticalizé.com' ||
-             u.email.toLowerCase() === 'anges.gildas@opticalize.com')
+             u.email.toLowerCase() === 'anges.gildas@opticalize.com' ||
+             u.email.toLowerCase() === 'glabtech1@gmail.com' ||
+             u.email.toLowerCase() === 'anges.gildas@gmail.com')
           );
           if (clean.length === 0) return defaults;
-          localStorage.setItem('optic_users', JSON.stringify(clean));
+          safeLocalStorage.setItem('optic_users', JSON.stringify(clean));
           return clean;
         }
-      } catch (e) {}
+      }
+    } catch (e) {
+      console.warn("Error initializing users array:", e);
     }
-    localStorage.setItem('optic_users', JSON.stringify(defaults));
+    try {
+      safeLocalStorage.setItem('optic_users', JSON.stringify(defaults));
+    } catch (e) {}
     return defaults;
   });
+
+  // Defensive startup purge of forbidden names & G-LAB OPTIC TOGO branch
+  useEffect(() => {
+    const blacklistNames = [
+      'helene dubois', 'hélène dubois', 
+      'jean-pierre gomez', 'jean pierre gomez', 
+      'sarah el-amiri', 'sarah el amiri', 'sarah amiri', 
+      'mamadi diarra', 
+      'awa niang'
+    ];
+    const isBlacklisted = (str: string) => {
+      if (!str) return false;
+      const s = str.toLowerCase().trim();
+      return blacklistNames.some(b => s.includes(b));
+    };
+
+    // 1. Purge customers
+    try {
+      const savedC = safeLocalStorage.getItem('optic_crm_customers');
+      if (savedC) {
+        const parsed = JSON.parse(savedC);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((c: any) => {
+            const fullName = `${c.firstName || ''} ${c.lastName || ''}`;
+            const matchesName = isBlacklisted(fullName) || isBlacklisted(c.firstName) || isBlacklisted(c.lastName);
+            const matchesBoutique = c.branch && c.branch.toUpperCase().includes('TOGO');
+            return !matchesName && !matchesBoutique;
+          });
+          if (cleaned.length !== parsed.length) {
+            safeLocalStorage.setItem('optic_crm_customers', JSON.stringify(cleaned));
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Purge HR employees
+    try {
+      const savedE = safeLocalStorage.getItem('optic_hr_employees');
+      if (savedE) {
+        const parsed = JSON.parse(savedE);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((emp: any) => {
+            const matchesName = isBlacklisted(emp.name);
+            const matchesBoutique = emp.boutique && emp.boutique.toUpperCase().includes('TOGO');
+            return !matchesName && !matchesBoutique;
+          });
+          if (cleaned.length !== parsed.length) {
+            safeLocalStorage.setItem('optic_hr_employees', JSON.stringify(cleaned));
+            setHrEmployees(cleaned);
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 3. Purge system users
+    try {
+      const savedU = safeLocalStorage.getItem('optic_users');
+      if (savedU) {
+        const parsed = JSON.parse(savedU);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((u: any) => {
+            const matchesName = isBlacklisted(u.name);
+            const matchesEmail = isBlacklisted(u.email);
+            const matchesBoutique = (u.location && u.location.toUpperCase().includes('TOGO')) || 
+              (u.allowedBoutiques && u.allowedBoutiques.some((b: string) => b.toUpperCase().includes('TOGO')));
+            return !matchesName && !matchesEmail && !matchesBoutique;
+          });
+          if (cleaned.length !== parsed.length) {
+            safeLocalStorage.setItem('optic_users', JSON.stringify(cleaned));
+            setUsers(cleaned);
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 4. Purge branches
+    try {
+      const savedB = safeLocalStorage.getItem('optic_hq_branches');
+      if (savedB) {
+        const parsed = JSON.parse(savedB);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((b: any) => {
+            return !(b.name && b.name.toUpperCase().includes('TOGO'));
+          });
+          if (cleaned.length !== parsed.length) {
+            safeLocalStorage.setItem('optic_hq_branches', JSON.stringify(cleaned));
+          }
+        }
+      }
+    } catch (e) {}
+
+    // Dispatch a storage event to propagate the clean data to all active components
+    window.dispatchEvent(new Event('storage'));
+  }, []);
 
   useEffect(() => {
     // Load synced users from PostgreSQL DB (or fallback cache) on startup
@@ -254,7 +386,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('optic_users', JSON.stringify(users));
+    safeLocalStorage.setItem('optic_users', JSON.stringify(users));
   }, [users]);
 
   // Preseeded employee default roster for seamless mock operations & synchronized biometrics
@@ -262,7 +394,7 @@ export default function App() {
 
   // Synced HR Employees - fallback seeds to SEED_EMPLOYEES on first launch
   const [hrEmployees, setHrEmployees] = useState<any[]>(() => {
-    const saved = localStorage.getItem('optic_hr_employees');
+    const saved = safeLocalStorage.getItem('optic_hr_employees');
     if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
@@ -271,16 +403,16 @@ export default function App() {
         }
       } catch (e) {}
     }
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
+    if (safeLocalStorage.getItem('optic_system_factory_reset') === 'true') {
       return [];
     }
     // First time launch: save & return the preseeded employees
-    localStorage.setItem('optic_hr_employees', JSON.stringify(SEED_EMPLOYEES));
+    safeLocalStorage.setItem('optic_hr_employees', JSON.stringify(SEED_EMPLOYEES));
     return SEED_EMPLOYEES;
   });
 
   useEffect(() => {
-    localStorage.setItem('optic_hr_employees', JSON.stringify(hrEmployees));
+    safeLocalStorage.setItem('optic_hr_employees', JSON.stringify(hrEmployees));
     window.dispatchEvent(new Event('storage'));
   }, [hrEmployees]);
 
@@ -295,13 +427,13 @@ export default function App() {
   const isModuleEnabledForCompany = (moduleId: string, companyId: string) => {
     if (isSuperAdmin) return true;
     if (['dashboard', 'clinique', 'hr', 'fidelisation', 'fidelisation_sav', 'presence'].includes(moduleId)) return true;
-    const saved = localStorage.getItem('optic_hq_branch_modules');
+    const saved = safeLocalStorage.getItem('optic_hq_branch_modules');
     if (saved) {
       try {
         const list = JSON.parse(saved);
         if (Array.isArray(list)) {
           const branchId = 'BR-CENTRAL';
-          const found = list.find((bm: any) => bm.branch_id === branchId && bm.module_name === moduleId);
+          const found = list.find((bm: any) => bm && bm.branch_id === branchId && bm.module_name === moduleId);
           if (found) {
             return found.is_enabled;
           }
@@ -311,7 +443,7 @@ export default function App() {
     return true; // default true if config is missing
   };
 
-  const loggedInUserRaw = users.find(u => u.email === currentUserEmail);
+  const loggedInUserRaw = users.find(u => u && u.email === currentUserEmail);
   const loggedInUser = loggedInUserRaw || (isSuperAdmin ? {
     id: 'USR-BYPASS-' + (currentUserEmail.includes('glabtech') ? 'GLAB' : 'GILD'),
     name: currentUserEmail.includes('glabtech') ? 'Glabtech1 Super Admin' : 'Anges Gildas Super Admin',
@@ -339,10 +471,16 @@ export default function App() {
 
   const getUserBoutiqueSuffix = () => {
     if (!loggedInUser) return '';
-    const boutique = (loggedInUser.allowedBoutiques && loggedInUser.allowedBoutiques.length > 0)
+    let boutique = (loggedInUser.allowedBoutiques && loggedInUser.allowedBoutiques.length > 0)
       ? loggedInUser.allowedBoutiques[0]
       : (loggedInUser.location || '');
     if (!boutique) return '';
+
+    // Replace depot central with direction
+    boutique = boutique
+      .replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION')
+      .replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION')
+      .replace(/Boutique/g, 'Agence');
     
     // Remove brand prefix if it already exists, so we don't duplicate it
     let cleanBoutique = boutique.replace(/^(Optic Alizé|OPTIQUE ALIZE)\s*(-\s*)?/i, '');
@@ -360,7 +498,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    localStorage.setItem('optic_user_email', currentUserEmail);
+    safeLocalStorage.setItem('optic_user_email', currentUserEmail);
     if (!isSuperAdmin) {
       const devTabs = ['blueprint', 'code', 'database', 'websockets', 'ai', 'design_system'];
       if (devTabs.includes(activeTab)) {
@@ -404,7 +542,7 @@ export default function App() {
       case 'websockets': return { category: 'Console Live', current: isFR ? 'WebSockets Live' : 'Live Hot WebSockets' };
       case 'ai': return { category: isFR ? 'IA Générative' : 'Generative AI', current: isFR ? 'Orchestrateur Clean' : 'Gemini AI Assistant' };
       case 'fidelisation_sav': return { category: isFR ? 'Relation Client' : 'Relations', current: isFR ? 'Fidélisation & S.A.V' : 'Loyalty & After-Sales' };
-      case 'fidelisation': return { category: 'ERP Classique', current: isFR ? 'Client & Registre' : 'Client & Register' };
+      case 'fidelisation': return { category: 'ERP Classique', current: isFR ? 'REGISTRE CLIENTS' : 'CLIENT REGISTRY' };
       case 'pos': return { category: 'ERP Classique', current: isFR ? 'Caisse POS (Ventes)' : 'Standard POS Checkout' };
       case 'accounting': return { category: 'ERP Classique', current: isFR ? 'Comptabilité Traditionnelle' : 'General Ledger Ledger' };
       case 'hr': return { category: 'ERP Classique', current: isFR ? 'Ressources Humaines' : 'Human Resources Registry' };
@@ -427,9 +565,13 @@ export default function App() {
 
   const handleLogout = () => {
     logoutUser();
-    localStorage.setItem('optic_is_authenticated', 'false');
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('optic_session_active');
+    }
+    safeLocalStorage.setItem('optic_is_authenticated', 'false');
     setIsAuthenticated(false);
     setIsLoggedOut(false);
+    setShowLogin(true);
   };
 
   const colors = getSelectedAccentColor();
@@ -437,38 +579,58 @@ export default function App() {
   const breadcrumbs = getBreadcrumb();
 
   if (!isAuthenticated) {
-    return (
-      <LoginPage
-        users={users}
-        currentLanguage={currentLanguage}
-        setCurrentLanguage={setCurrentLanguage}
-        appLogo={appLogo}
-        onLoginSuccess={(email) => {
-          localStorage.setItem('optic_is_authenticated', 'true');
-          localStorage.setItem('optic_user_email', email);
-          setIsAuthenticated(true);
-          setCurrentUserEmail(email);
-          setActiveTab('dashboard');
-          
-          // Detect and auto-open the designated agency/boutique for the logged-in user
-          const savedUsers = localStorage.getItem('optic_users');
-          if (savedUsers) {
-            try {
-              const list = JSON.parse(savedUsers);
-              if (Array.isArray(list)) {
-                const matched = list.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-                if (matched) {
-                  const destinedAgency = (matched.allowedBoutiques && matched.allowedBoutiques.length > 0)
-                    ? matched.allowedBoutiques[0]
-                    : (matched.location || 'Optic Alizé - DIRECTION');
-                  localStorage.setItem('optic_active_presence_boutique', destinedAgency);
+    if (showLogin) {
+      return (
+        <LoginPage
+          users={users}
+          currentLanguage={currentLanguage}
+          setCurrentLanguage={setCurrentLanguage}
+          appLogo={appLogo}
+          onBack={() => setShowLogin(false)}
+          onLoginSuccess={(email) => {
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('optic_session_active', 'true');
+            }
+            safeLocalStorage.setItem('optic_is_authenticated', 'true');
+            safeLocalStorage.setItem('optic_user_email', email);
+            setIsAuthenticated(true);
+            setCurrentUserEmail(email);
+            setActiveTab('dashboard');
+            
+            // Detect and auto-open the designated agency/boutique for the logged-in user
+            const savedUsers = safeLocalStorage.getItem('optic_users');
+            if (savedUsers) {
+              try {
+                const list = JSON.parse(savedUsers);
+                if (Array.isArray(list)) {
+                  const matched = list.find((u: any) => u && u.email && u.email.toLowerCase() === email.toLowerCase());
+                  if (matched) {
+                    let destinedAgency = (matched.allowedBoutiques && matched.allowedBoutiques.length > 0)
+                      ? matched.allowedBoutiques[0]
+                      : (matched.location || 'Optic Alizé - DIRECTION');
+                    destinedAgency = destinedAgency
+                      .replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION')
+                      .replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION')
+                      .replace(/Boutique/g, 'Agence');
+                    safeLocalStorage.setItem('optic_active_presence_boutique', destinedAgency);
+                    safeLocalStorage.setItem('optic_boutique_name', destinedAgency);
+                  }
                 }
-              }
-            } catch (err) {}
-          }
-        }}
-      />
-    );
+              } catch (err) {}
+            }
+          }}
+        />
+      );
+    } else {
+      return (
+        <LandingPage
+          currentLanguage={currentLanguage}
+          setCurrentLanguage={setCurrentLanguage}
+          onEnterLogin={() => setShowLogin(true)}
+          appLogo={appLogo}
+        />
+      );
+    }
   }
 
   return (
@@ -565,10 +727,11 @@ export default function App() {
               <nav className="p-4 space-y-1">
                 {[
                   { id: 'dashboard', label: currentLanguage === 'FR' ? 'Dashboard' : 'Dashboard', icon: <BarChart3 className="w-4 h-4" /> },
-                  { id: 'fidelisation', label: currentLanguage === 'FR' ? 'Client & Registre' : 'Client & Register', icon: <User className="w-4 h-4" /> },
+                  { id: 'fidelisation', label: currentLanguage === 'FR' ? 'Registre Clients' : 'Client Registry', icon: <User className="w-4 h-4" /> },
                   { id: 'fidelisation_sav', label: currentLanguage === 'FR' ? 'Fidélisation & S.A.V' : 'Fidélisation & S.A.V', icon: <Award className="w-4 h-4 text-cyan-600" /> },
                   { id: 'clinique', label: currentLanguage === 'FR' ? 'Clinique & Prescription' : 'Clinical & Prescription', icon: <Heart className="w-4 h-4 text-rose-500 fill-rose-500" /> },
                   { id: 'products', label: currentLanguage === 'FR' ? 'Catalogue Optic' : 'Optical Catalog', icon: <Package className="w-4 h-4" /> },
+                  { id: 'stock_inventaire', label: currentLanguage === 'FR' ? 'Stock & Inventaire' : 'Stock & Inventory', icon: <Boxes className="w-4 h-4 text-emerald-600" /> },
                   { id: 'commande', label: currentLanguage === 'FR' ? 'Commande Optic' : 'Optic Orders', icon: <ClipboardList className="w-4 h-4 text-indigo-600" /> },
                   { id: 'orders', label: currentLanguage === 'FR' ? 'Point de Vente' : 'Point of Sale (POS)', icon: <ShoppingCart className="w-4 h-4 text-blue-600" /> },
                   { id: 'journal', label: currentLanguage === 'FR' ? 'Journal de caisse' : 'Daily Cash Journal', icon: <BookOpen className="w-4 h-4 text-emerald-600" /> },
@@ -589,7 +752,7 @@ export default function App() {
                   // Filter strictly based on user permissions
                   const userHasAccess = isSuperAdmin || userAllowedModules.includes(item.id) || item.id === 'settings';
                   // Filter based on boutique's enabled branch_modules
-                  const branchHasEnabled = isModuleEnabledForCompany(item.id, currentCompany.id);
+                  const branchHasEnabled = isModuleEnabledForCompany(item.id, currentCompany?.id || 'GLAB');
                   return userHasAccess && branchHasEnabled;
                 }).map((item) => {
                   const isActive = activeTab === item.id;
@@ -682,7 +845,7 @@ export default function App() {
                     <nav className="p-4 space-y-1">
                       {[
                         { id: 'dashboard', label: currentLanguage === 'FR' ? 'Dashboard' : 'Dashboard', icon: <BarChart3 className="w-4 h-4" /> },
-                        { id: 'fidelisation', label: currentLanguage === 'FR' ? 'Client & Registre' : 'Client & Register', icon: <User className="w-4 h-4" /> },
+                        { id: 'fidelisation', label: currentLanguage === 'FR' ? 'Registre Clients' : 'Client Registry', icon: <User className="w-4 h-4" /> },
                         { id: 'fidelisation_sav', label: currentLanguage === 'FR' ? 'Fidélisation & S.A.V' : 'Fidélisation & S.A.V', icon: <Award className="w-4 h-4 text-cyan-600" /> },
                         { id: 'clinique', label: currentLanguage === 'FR' ? 'Clinique & Prescription' : 'Clinical & Prescription', icon: <Heart className="w-4 h-4 text-rose-500 fill-rose-500" /> },
                         { id: 'products', label: currentLanguage === 'FR' ? 'Catalogue Optic' : 'Optical Catalog', icon: <Package className="w-4 h-4" /> },
@@ -704,7 +867,7 @@ export default function App() {
                         if (item.id === 'super_admin_monitor' && !isSuperAdmin) return false;
                         if (item.id === 'settings' && !isSuperAdmin) return false;
                         const userHasAccess = isSuperAdmin || userAllowedModules.includes(item.id) || item.id === 'settings';
-                        const branchHasEnabled = isModuleEnabledForCompany(item.id, currentCompany.id);
+                        const branchHasEnabled = isModuleEnabledForCompany(item.id, currentCompany?.id || 'GLAB');
                         return userHasAccess && branchHasEnabled;
                       }).map((item) => {
                         const isActive = activeTab === item.id;
@@ -881,7 +1044,7 @@ export default function App() {
                 {/* User Profile dropdown */}
                 <div className="relative">
                   {(() => {
-                    const matchedEmp = (hrEmployees || []).find((emp: any) => emp.email && emp.email.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
+                    const matchedEmp = (hrEmployees || []).find((emp: any) => emp && emp.email && emp.email.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
                     const userAvatarUrl = matchedEmp?.photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUserEmail)}`;
                     const userDisplayName = matchedEmp ? `${matchedEmp.firstName} ${matchedEmp.lastName}` : (currentUserEmail.includes('glabtech') ? 'Glabtech Administrator' : 'Anges Gildas Admin');
                     const userRoleName = matchedEmp?.position || (currentUserEmail.includes('glabtech') ? 'SaaS Architect' : 'Directeur Général');
@@ -999,6 +1162,7 @@ export default function App() {
                   {activeTab === 'journal' && <JournalModule currentLanguage={currentLanguage} />}
                   {activeTab === 'gestion_optic' && <GestionOpticModule currentLanguage={currentLanguage} />}
                   {activeTab === 'products' && <SaaSProducts darkMode={false} currentLanguage={currentLanguage} />}
+                  {activeTab === 'stock_inventaire' && <StockInventaireModule currentLanguage={currentLanguage} />}
                   {activeTab === 'websockets' && <WebSocketSimulator />}
                   {activeTab === 'revenue' && <AccountingModule onAddGeneratedFiles={handleAddGeneratedFiles} currentLanguage={currentLanguage} />}
                   {activeTab === 'reports' && <SaaSReports darkMode={false} currentLanguage={currentLanguage} />}

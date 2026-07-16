@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { Settings, Shield, User, Database, Key, HelpCircle, Save, Check, AlertCircle, AlertTriangle, Trash2, Users, Globe, RefreshCw, Loader2, Palette, Cloud, Building2, Layers, Code, Zap, Sparkles, Sliders, Terminal, FolderOpen, Smartphone, ShieldCheck, Cpu, HardDrive, Filter, Activity } from 'lucide-react';
 import SaaSUsers from './SaaSUsers';
 import StorageManager from './StorageManager';

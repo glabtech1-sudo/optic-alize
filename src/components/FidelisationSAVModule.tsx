@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeLocalStorage as localStorage, globalMemoryStore, syncCollectionToSupabase, loadCollectionFromSupabase } from '../lib/supabaseSync';
 import { 
   Award, Shield, Table, Search, PlusCircle, Gift, UserPlus, Star, ChevronRight, CheckCircle2, Ticket,
   ShoppingBag, TrendingUp, Coins, Activity, FileText, Check, RotateCcw, AlertCircle, Sparkles, Plus, Info,
@@ -38,10 +39,10 @@ interface FidelisationSAVModuleProps {
 export default function FidelisationSAVModule({ currentLanguage, currentCompany, isOffline }: FidelisationSAVModuleProps) {
   const [activeTab, setActiveTab] = useState<'loyalty' | 'sav'>('loyalty');
   
-  // Load customers state (Syncs with CRMModule via localStorage)
+  // Load customers state (Syncs with CRMModule via globalMemoryStore)
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem('optic_crm_customers');
-    if (saved !== null) {
+    const saved = globalMemoryStore['optic_crm_customers'];
+    if (saved !== undefined && saved !== null) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
@@ -55,7 +56,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
 
   // Load agency sales (from CommandeModule)
   const [commandes, setCommandes] = useState<CommandeItem[]>(() => {
-    const saved = localStorage.getItem('optic_my_commandes');
+    const saved = globalMemoryStore['optic_my_commandes'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -70,7 +71,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
     if (localStorage.getItem('optic_system_factory_reset') === 'true') {
       return [];
     }
-    const saved = localStorage.getItem('optic_credited_loyalty_orders');
+    const saved = globalMemoryStore['optic_credited_loyalty_orders'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -79,7 +80,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
     }
     
     // Seed with completed orders to look natural only if commands are not empty/reset
-    const savedCmds = localStorage.getItem('optic_my_commandes');
+    const savedCmds = globalMemoryStore['optic_my_commandes'];
     if (savedCmds) {
       try {
         const parsedCmds = JSON.parse(savedCmds);
@@ -128,12 +129,13 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
     setTimeout(() => setRewardMessage(null), 3000);
   };
 
-  // Synchronise back to localstorage whenever customers list changes
+  // Synchronise back to globalMemoryStore/Supabase whenever customers list changes
   useEffect(() => {
     const serialized = JSON.stringify(customers);
-    const existing = localStorage.getItem('optic_crm_customers');
+    const existing = globalMemoryStore['optic_crm_customers'];
     if (existing !== serialized) {
-      localStorage.setItem('optic_crm_customers', serialized);
+      globalMemoryStore['optic_crm_customers'] = serialized;
+      syncCollectionToSupabase('optic_crm_customers', serialized).catch(() => {});
       // Dispatch event to keep other modules synced
       window.dispatchEvent(new Event('storage'));
     }
@@ -142,16 +144,17 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
   // Synchronise credited orders list
   useEffect(() => {
     const serialized = JSON.stringify(creditedOrders);
-    const existing = localStorage.getItem('optic_credited_loyalty_orders');
+    const existing = globalMemoryStore['optic_credited_loyalty_orders'];
     if (existing !== serialized) {
-      localStorage.setItem('optic_credited_loyalty_orders', serialized);
+      globalMemoryStore['optic_credited_loyalty_orders'] = serialized;
+      syncCollectionToSupabase('optic_credited_loyalty_orders', serialized).catch(() => {});
     }
   }, [creditedOrders]);
 
   // Sync state with outside local storage updates (bidirectional live preview)
   useEffect(() => {
     const handleStorageChange = () => {
-      const saved = localStorage.getItem('optic_crm_customers');
+      const saved = globalMemoryStore['optic_crm_customers'];
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -165,7 +168,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
           }
         } catch (e) {}
       }
-      const savedCmds = localStorage.getItem('optic_my_commandes');
+      const savedCmds = globalMemoryStore['optic_my_commandes'];
       if (savedCmds) {
         try {
           const parsedCmds = JSON.parse(savedCmds);
@@ -179,7 +182,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
           }
         } catch (e) {}
       }
-      const savedCredited = localStorage.getItem('optic_credited_loyalty_orders');
+      const savedCredited = globalMemoryStore['optic_credited_loyalty_orders'];
       if (savedCredited) {
         try {
           const parsedCredited = JSON.parse(savedCredited);
@@ -198,6 +201,39 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  React.useEffect(() => {
+    let active = true;
+    const loadData = async () => {
+      try {
+        const dbCust = await loadCollectionFromSupabase('optic_crm_customers');
+        if (dbCust && active) {
+          const parsed = typeof dbCust === 'string' ? JSON.parse(dbCust) : dbCust;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCustomers(parsed);
+          }
+        }
+        const dbCmds = await loadCollectionFromSupabase('optic_my_commandes');
+        if (dbCmds && active) {
+          const parsed = typeof dbCmds === 'string' ? JSON.parse(dbCmds) : dbCmds;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCommandes(parsed);
+          }
+        }
+        const dbCredited = await loadCollectionFromSupabase('optic_credited_loyalty_orders');
+        if (dbCredited && active) {
+          const parsed = typeof dbCredited === 'string' ? JSON.parse(dbCredited) : dbCredited;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCreditedOrders(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('[FidelisationSAVModule] Direct Supabase fetch failed:', e);
+      }
+    };
+    loadData();
+    return () => { active = false; };
   }, []);
 
   // Handle adding points manually
@@ -412,7 +448,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">Ventes Évaluées</span>
-                <strong className="text-sm font-black text-slate-800">{stats.totalSalesFCFA.toLocaleString()} {currentCompany.symbol || 'FCFA'}</strong>
+                <strong className="text-sm font-black text-slate-800">{(stats.totalSalesFCFA || 0).toLocaleString()} {currentCompany.symbol || 'FCFA'}</strong>
               </div>
             </div>
 
@@ -525,7 +561,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
                               </td>
                               <td className="p-3">
                                 <div className="font-bold text-slate-700 font-mono text-[11px]">
-                                  {totalSpend > 0 ? `${totalSpend.toLocaleString()} ${currentCompany.symbol || 'FCFA'}` : '0 FCFA'}
+                                  {totalSpend > 0 ? `${(totalSpend || 0).toLocaleString()} ${currentCompany.symbol || 'FCFA'}` : '0 FCFA'}
                                 </div>
                                 <div className="text-[9px] text-slate-400">{patientCmds.length} commande(s)</div>
                               </td>
@@ -638,7 +674,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
                                 <div className="text-[9px] text-slate-400 truncate max-w-[150px]" title={cmd.lensesType}>{cmd.lensesType}</div>
                               </td>
                               <td className="p-3 text-right font-mono font-bold text-slate-800">
-                                {cmd.totalFCFA.toLocaleString()} {currentCompany.symbol || 'FCFA'}
+                                {(cmd.totalFCFA || 0).toLocaleString()} {currentCompany.symbol || 'FCFA'}
                               </td>
                               <td className="p-3 text-center">
                                 {isCredited ? (
@@ -685,27 +721,6 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
                         <div>⚙️ Multiplicateur : <span className="font-bold text-slate-700 font-mono">x{data.multiplier}</span></div>
                         <div>🛠️ Atelier : <span className="font-bold text-slate-700">{data.repair}</span></div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Loyalty bonus rewards list */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-3.5">
-                <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-[#0097a7] border-b pb-2 flex items-center gap-1">
-                  <Gift className="w-4 h-4" />
-                  <span>Programme de Récompenses</span>
-                </h4>
-                <div className="space-y-3">
-                  {LOYALTY_BONUSES.map((bonus, idx) => (
-                    <div key={idx} className="bg-slate-50/55 p-3 rounded-xl border border-slate-150 flex items-center justify-between gap-3 text-left">
-                      <div className="space-y-1">
-                        <h5 className="font-bold text-xs text-slate-800 leading-tight">{bonus.rewardValue}</h5>
-                        <p className="text-[10px] text-slate-500 leading-normal">{bonus.description}</p>
-                      </div>
-                      <span className="shrink-0 float-right px-2 py-1 bg-cyan-50 border border-cyan-100 text-[#0097A7] font-mono text-[9.5px] font-black rounded-lg">
-                        {bonus.pointsNeeded} pts
-                      </span>
                     </div>
                   ))}
                 </div>
@@ -771,83 +786,20 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
                 <div>
                   <span className="text-[9px] uppercase font-bold text-slate-400">Total Ventes Réseau</span>
                   <p className="text-lg font-bold font-mono text-slate-700">
-                    {getCustomerOrders(selectedCustomer).reduce((s, cmd) => s + cmd.totalFCFA, 0).toLocaleString()} {currentCompany.symbol || 'FCFA'}
+                    {getCustomerOrders(selectedCustomer).reduce((s, cmd) => s + (cmd.totalFCFA || 0), 0).toLocaleString()} {currentCompany.symbol || 'FCFA'}
                   </p>
                 </div>
               </div>
 
-              {/* Tabs Inside Modal */}
-              <div className="flex border-b border-slate-100 gap-2">
-                <button
-                  onClick={() => setModalTab('rewards')}
-                  className={`px-3 py-2 text-xs font-bold border-b-2 transition ${
-                    modalTab === 'rewards' 
-                      ? 'border-[#00BCD4] text-[#0097A7]' 
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  🎁 Récompenses Éligibles
-                </button>
-                <button
-                  onClick={() => setModalTab('sales')}
-                  className={`px-3 py-2 text-xs font-bold border-b-2 transition flex items-center gap-1.5 ${
-                    modalTab === 'sales' 
-                      ? 'border-[#00BCD4] text-[#0097A7]' 
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <ShoppingBag className="w-3.5 h-3.5" />
+              {/* Sales History Header */}
+              <div className="flex border-b border-slate-100 pb-2">
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wide font-mono flex items-center gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5 text-[#0097A7]" />
                   <span>Historique des Ventes Agence ({getCustomerOrders(selectedCustomer).length})</span>
-                </button>
+                </span>
               </div>
 
-              {modalTab === 'rewards' ? (
-                <div className="space-y-3">
-                  <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                    {LOYALTY_BONUSES.map((bonus, idx) => {
-                      const isEligible = selectedCustomer.loyaltyPoints >= bonus.pointsNeeded;
-                      return (
-                        <div 
-                          key={idx} 
-                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition ${
-                            isEligible 
-                              ? 'bg-[#0097A7]/5 border-[#00BCD4]/15 hover:bg-[#00BCD4]/10' 
-                              : 'bg-slate-50/50 border-slate-100 opacity-60'
-                          }`}
-                        >
-                          <div className="space-y-0.5 text-left">
-                            <h5 className="font-bold text-xs text-slate-800 leading-tight flex items-center gap-1">
-                              {bonus.rewardValue}
-                              {isEligible && <Star className="w-3 h-3 text-amber-500 fill-amber-500" />}
-                            </h5>
-                            <p className="text-[10.5px] text-slate-500 leading-normal max-w-md">{bonus.description}</p>
-                          </div>
-                          <div className="shrink-0 flex flex-col items-end gap-1.5">
-                            <span className="text-[10px] font-mono font-bold text-slate-500 shrink-0">
-                              Exige {bonus.pointsNeeded} pts
-                            </span>
-                            {isEligible ? (
-                              <button
-                                onClick={() => {
-                                  handleConvertPoints(selectedCustomer.id, bonus);
-                                }}
-                                className="px-2.5 py-1 text-[10px] font-black uppercase bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                              >
-                                Débloquer
-                              </button>
-                            ) : (
-                              <span className="text-[9px] bg-slate-200 text-slate-500 font-bold px-2 py-0.5 rounded cursor-not-allowed">
-                                Verrouillé
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
+              <div className="space-y-3">
                   <div className="max-h-[40vh] overflow-y-auto border border-slate-100 rounded-xl">
                     {getCustomerOrders(selectedCustomer).length === 0 ? (
                       <div className="py-12 text-center text-slate-400 text-xs">
@@ -878,7 +830,7 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
                                   <div className="text-[9.5px] text-slate-400 font-sans">{cmd.lensesType}</div>
                                 </td>
                                 <td className="p-3 text-right font-mono font-bold text-slate-850">
-                                  {cmd.totalFCFA.toLocaleString()} {currentCompany.symbol || 'FCFA'}
+                                  {(cmd.totalFCFA || 0).toLocaleString()} {currentCompany.symbol || 'FCFA'}
                                 </td>
                                 <td className="p-3 text-center">
                                   {isCredited ? (
@@ -902,7 +854,6 @@ export default function FidelisationSAVModule({ currentLanguage, currentCompany,
                     )}
                   </div>
                 </div>
-              )}
             </motion.div>
           </div>
         )}

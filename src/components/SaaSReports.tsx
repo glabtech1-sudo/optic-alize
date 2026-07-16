@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { BarChart3, TrendingUp, Users, Download, ArrowUpRight, Share2, Calendar, FileText, Building2, Wallet, Check, AlertCircle } from 'lucide-react';
 
 interface SaaSReportsProps {
@@ -22,21 +23,14 @@ export default function SaaSReports({ darkMode = false, currentLanguage = 'FR' }
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(b => ({
+          return parsed.filter((b: any) => b && typeof b === 'object').map(b => ({
             ...b,
-            name: b.name.replace(/Boutique/g, 'Agence')
+            name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
           }));
         }
       }
     } catch (e) {}
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-    return [
-      { id: 'bt-dakar', name: 'Agence Alpha', country: 'Zone Ouest', code: 'A-01', sales: '14 540 000 FCFA', satisfaction: '98.2%', staff: '3 conseillers', stockIntegrity: '99.4%', status: 'Excellent', city: 'Dakar' },
-      { id: 'bt-abidjan', name: 'Agence Bêta', country: 'Zone Ouest', code: 'B-02', sales: '11 250 000 FCFA', satisfaction: '95.5%', staff: '2 conseillers', stockIntegrity: '97.6%', status: 'Correct', city: 'Abidjan' },
-      { id: 'bt-lome', name: 'Agence Gamma', country: 'Zone Ouest', code: 'G-03', sales: '8 700 000 FCFA', satisfaction: '94.0%', staff: '1 conseiller', stockIntegrity: '98.1%', status: 'Correct', city: 'Lomé' }
-    ];
+    return [];
   });
 
   React.useEffect(() => {
@@ -46,13 +40,17 @@ export default function SaaSReports({ darkMode = false, currentLanguage = 'FR' }
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            setLocalBranches(parsed.map(b => ({
+            const updatedBranches = parsed.filter((b: any) => b && typeof b === 'object').map(b => ({
               ...b,
-              name: b.name.replace(/Boutique/g, 'Agence')
-            })));
+              name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
+            }));
+            setLocalBranches(prev => {
+              const hasChanged = JSON.stringify(prev) !== JSON.stringify(updatedBranches);
+              return hasChanged ? updatedBranches : prev;
+            });
           }
         } else if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-          setLocalBranches([]);
+          setLocalBranches(prev => prev.length > 0 ? [] : prev);
         }
       } catch (e) {}
     };
@@ -65,8 +63,8 @@ export default function SaaSReports({ darkMode = false, currentLanguage = 'FR' }
       const saved = localStorage.getItem('optic_hq_branches');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed[0].id;
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]) {
+          return parsed[0].id || 'ALL';
         }
       }
       return 'ALL';
@@ -438,7 +436,8 @@ export default function SaaSReports({ darkMode = false, currentLanguage = 'FR' }
                     <p className="col-span-3 text-xs italic text-slate-400 text-center py-4">Aucune agence active pour comparaison.</p>
                   ) : (
                     localBranches.map((b, i) => {
-                      const numericSales = b.sales ? parseFloat(b.sales.replace(/[^0-9]/g, '')) : 12500000;
+                      const salesStr = b.sales !== undefined && b.sales !== null ? String(b.sales) : "";
+                      const numericSales = salesStr ? parseFloat(salesStr.replace(/[^0-9]/g, '')) : 12500000;
                       const salesInMillions = (numericSales / 1000000).toFixed(1);
                       const heightPercent = Math.min(Math.max(Math.round((numericSales / 20000000) * 100), 15), 100);
                       return (

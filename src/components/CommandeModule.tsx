@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { safeLocalStorage as localStorage, globalMemoryStore, syncCollectionToSupabase, loadCollectionFromSupabase, debitStockItem } from '../lib/supabaseSync';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ClipboardList, Search, Eye, Filter, Calendar, CheckCircle2, 
@@ -10,6 +11,8 @@ import {
 export interface CommandeItem {
   id: string;
   customer: string;
+  customerPhone?: string;
+  customerEmail?: string;
   date: string;
   lensesType: string;
   frameModel: string;
@@ -30,15 +33,7 @@ interface PatientClinic {
   optician: string;
 }
 
-const PRESET_CLINIC_PATIENTS: PatientClinic[] = [
-  { name: 'Ibrahima Diallo', prescription: 'OD: -1.75 CYL: -0.50 Axe: 15° | OS: -1.50 CYL: -0.25 Axe: 180°', optician: 'Dr. Clavel' },
-  { name: 'Mariama Sylla', prescription: 'OD: +2.50 OS: +2.25 addition: 2.00', optician: 'Dr. Clavel' },
-  { name: 'Amadou Bamba', prescription: 'OD: +0.50 Cyl -1.00 Axe 90° | OS: Plan', optician: 'Dr. Lecerf' },
-  { name: 'Fatoumata Wade', prescription: 'OD: -4.00 OS: -4.25 (Myopie forte)', optician: 'Dr. Clavel' },
-  { name: 'Amina Diop', prescription: 'OD: -0.75 OS: -1.00 Presbytie +1.25', optician: 'Dr. Lecerf' },
-  { name: 'Cheikh Tidiane', prescription: 'OD: Plan OS: Plan (Repos écran)', optician: 'Fatou Soumaré' },
-  { name: 'Ousmane Cissé', prescription: 'OD: +1.25 OS: +1.25 (Astigmatisme léger)', optician: 'Fatou Soumaré' }
-];
+const PRESET_CLINIC_PATIENTS: PatientClinic[] = [];
 
 const PRESET_LENSES = [
   "Verres Correcteurs Anti-reflet Crizal Sapphire",
@@ -59,6 +54,40 @@ const PRESET_FRAMES = [
   "Gucci Aviator Double Bridge Metal",
   "Carrera Active Lite"
 ];
+
+export const getFramePrice = (frameName: string): number => {
+  if (!frameName) return 0;
+  if (frameName.includes("Oakley")) return 120000;
+  if (frameName.includes("Ray-Ban")) return 95000;
+  if (frameName.includes("Persol")) return 150000;
+  if (frameName.includes("Chanel")) return 250000;
+  if (frameName.includes("Prada")) return 180000;
+  if (frameName.includes("Gucci")) return 220000;
+  if (frameName.includes("Carrera")) return 85000;
+  // Default fallback if not found
+  let hash = 0;
+  for (let i = 0; i < frameName.length; i++) {
+    hash = frameName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return 80000 + (Math.abs(hash) % 12) * 10000;
+};
+
+export const getLensPrice = (lensName: string): number => {
+  if (!lensName) return 0;
+  if (lensName.includes("Varilux") || lensName.includes("Progressifs")) return 140000;
+  if (lensName.includes("Crizal") || lensName.includes("Anti-reflet")) return 75050;
+  if (lensName.includes("Transitions") || lensName.includes("Photochromiques")) return 110000;
+  if (lensName.includes("Polarisés")) return 90000;
+  if (lensName.includes("Organiques")) return 45000;
+  if (lensName.includes("Minéral")) return 60000;
+  if (lensName.includes("Polycarbonate")) return 80000;
+  // Default fallback if not found
+  let hash = 0;
+  for (let i = 0; i < lensName.length; i++) {
+    hash = lensName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return 50000 + (Math.abs(hash) % 10) * 10000;
+};
 
 const initialCommandes: CommandeItem[] = [
   { 
@@ -129,19 +158,69 @@ interface CommandeModuleProps {
 
 export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModuleProps) {
   const [commandes, setCommandes] = useState<CommandeItem[]>(() => {
-    const saved = localStorage.getItem('optic_my_commandes');
+    const saved = globalMemoryStore['optic_my_commandes'];
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    return [];
+    return initialCommandes;
   });
 
   React.useEffect(() => {
-    localStorage.setItem('optic_my_commandes', JSON.stringify(commandes));
+    const serialized = JSON.stringify(commandes);
+    globalMemoryStore['optic_my_commandes'] = serialized;
+    syncCollectionToSupabase('optic_my_commandes', serialized).catch(() => {});
   }, [commandes]);
+
+  React.useEffect(() => {
+    let active = true;
+    const loadData = async () => {
+      try {
+        const dbCmds = await loadCollectionFromSupabase('optic_my_commandes');
+        if (dbCmds && active) {
+          const parsed = typeof dbCmds === 'string' ? JSON.parse(dbCmds) : dbCmds;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCommandes(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('[CommandeModule] Direct Supabase fetch failed:', e);
+      }
+    };
+    loadData();
+    return () => { active = false; };
+  }, []);
+
+  const [realFrames, setRealFrames] = useState<string[]>(PRESET_FRAMES);
+  const [realLenses, setRealLenses] = useState<string[]>(PRESET_LENSES);
+
+  React.useEffect(() => {
+    import('../lib/api').then(({ fetchProducts }) => {
+      fetchProducts().then(data => {
+        if (Array.isArray(data)) {
+          const frames = data.filter(Boolean)
+            .filter((p: any) => (p.category || p.type || '').toUpperCase() === 'MONTURE')
+            .map((p: any) => `${p.brand} - ${p.name}`);
+          const lenses = data.filter(Boolean)
+            .filter((p: any) => (p.category || p.type || '').toUpperCase() === 'VERRE' || (p.category || p.type || '').toUpperCase() === 'LENTILLE')
+            .map((p: any) => `${p.brand} - ${p.name}`);
+          if (frames.length > 0) {
+            setRealFrames(frames);
+            setFormFrame(frames[0]);
+          }
+          if (lenses.length > 0) {
+            setRealLenses(lenses);
+            setFormLenses(lenses[0]);
+          }
+        }
+      }).catch(err => {
+        console.error("Failed to load real components for CommandeModule:", err);
+      });
+    });
+  }, []);
+
   const [activeTab, setActiveTab] = useState<'all' | 'prepared' | 'in_progress' | 'cancelled' | 'finalized'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCommande, setSelectedCommande] = useState<CommandeItem | null>(null);
@@ -162,18 +241,101 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
     }
     return [];
   });
-  
+  const [clinicalPatients, setClinicalPatients] = useState<any[]>([]);
+
+  // Synchronize both lists of clinical patients (from prescriptions) and CRM register clients
+  useEffect(() => {
+    const handleSync = () => {
+      // 1. CRM Customers (Client Direct)
+      const savedCrm = localStorage.getItem('optic_crm_customers');
+      if (savedCrm) {
+        try {
+          const parsed = JSON.parse(savedCrm);
+          if (Array.isArray(parsed)) {
+            setCrmCustomers(parsed);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // 2. Clinical Prescriptions (Patient Clinique)
+      const savedPres = localStorage.getItem('optic_my_prescriptions');
+      let loadedPres: any[] = [];
+      if (savedPres) {
+        try {
+          const parsed = JSON.parse(savedPres);
+          if (Array.isArray(parsed)) {
+            loadedPres = parsed.map((p: any) => ({
+              name: p.patientName || 'Patient Clinique',
+              prescription: `OD: Sph ${(p.odSphere ?? 0) > 0 ? '+' : ''}${p.odSphere ?? '0.00'} Cyl ${(p.odCylinder ?? 0) > 0 ? '+' : ''}${p.odCylinder ?? '0.00'} Axe ${p.odAxis ?? '90'}° | OS: Sph ${(p.ogSphere ?? 0) > 0 ? '+' : ''}${p.ogSphere ?? '0.00'} Cyl ${(p.ogCylinder ?? 0) > 0 ? '+' : ''}${p.ogCylinder ?? '0.00'} Axe ${p.ogAxis ?? '90'}°`,
+              optician: p.ophthalmologist ? `Dr. ${p.ophthalmologist}` : 'Ophtalmologiste'
+            }));
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      setClinicalPatients(loadedPres);
+
+      // 3. Commandes list (Real-time Sync)
+      const savedCmds = localStorage.getItem('optic_my_commandes');
+      if (savedCmds) {
+        try {
+          const parsed = JSON.parse(savedCmds);
+          if (Array.isArray(parsed)) {
+            setCommandes(prev => {
+              if (JSON.stringify(prev) === savedCmds) {
+                return prev;
+              }
+              return parsed;
+            });
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    };
+
+    handleSync();
+    window.addEventListener('storage', handleSync);
+    const interval = setInterval(handleSync, 2000);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      clearInterval(interval);
+    };
+  }, []);
+
   const [formPatientIndex, setFormPatientIndex] = useState<number>(0);
   const [formDirectCustomerIndex, setFormDirectCustomerIndex] = useState<number>(0);
-  const [formPrescriptionDetails, setFormPrescriptionDetails] = useState('OD: -1.75 CYL: -0.50 Axe: 15° | OS: -1.50 CYL: -0.25 Axe: 180°');
-  const [formOptician, setFormOptician] = useState('Dr. Clavel');
+  const [formPrescriptionDetails, setFormPrescriptionDetails] = useState('');
+  const [formOptician, setFormOptician] = useState('');
 
+  // Auto-set the first clinical patient's info when they load
+  useEffect(() => {
+    if (orderType === 'clinique' && clinicalPatients.length > 0) {
+      const sel = clinicalPatients[formPatientIndex] || clinicalPatients[0];
+      if (sel) {
+        setFormPrescriptionDetails(sel.prescription);
+        setFormOptician(sel.optician);
+      }
+    }
+  }, [clinicalPatients, formPatientIndex, orderType]);
+  
   const [formLenses, setFormLenses] = useState(PRESET_LENSES[0]);
   const [formFrame, setFormFrame] = useState(PRESET_FRAMES[0]);
   const [formDelay, setFormDelay] = useState('');
   const [formPaymentMode, setFormPaymentMode] = useState<'full' | 'installments'>('full');
-  const [formTotalPrice, setFormTotalPrice] = useState<number>(250050);
+  const [formTotalPrice, setFormTotalPrice] = useState<number>(215050);
   const [formDeposit, setFormDeposit] = useState<number>(100000);
+
+  useEffect(() => {
+    const frameP = getFramePrice(formFrame);
+    const lensP = getLensPrice(formLenses);
+    const calculatedPrice = frameP + lensP;
+    setFormTotalPrice(calculatedPrice);
+    setFormDeposit(Math.floor(calculatedPrice * 0.4));
+  }, [formFrame, formLenses]);
 
   const triggerToast = (text: string, type: 'success' | 'warn' = 'success') => {
     setToastMessage({ text, type });
@@ -190,30 +352,35 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
   // Switch patient index and auto refill prescription fields & custom prices
   const handlePatientIndexChange = (idx: number) => {
     setFormPatientIndex(idx);
-    const selectedPatient = PRESET_CLINIC_PATIENTS[idx];
+    const selectedPatient = clinicalPatients[idx];
     if (selectedPatient) {
       setFormPrescriptionDetails(selectedPatient.prescription);
       setFormOptician(selectedPatient.optician);
     }
-    // Alternate price to feel real
-    const basePrice = 180000 + (idx * 55000);
-    setFormTotalPrice(basePrice);
-    setFormDeposit(Math.floor(basePrice * 0.4));
   };
 
   const handleCreateOrderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     let customerName = '';
+    let customerPhone = '';
+    let customerEmail = '';
     let opticianName = formOptician || 'Direct Client';
     let prescription = formPrescriptionDetails || 'Sans prescription clinique rattachée';
 
     if (orderType === 'clinique') {
-      const selectedPatient = PRESET_CLINIC_PATIENTS[formPatientIndex];
+      const selectedPatient = clinicalPatients[formPatientIndex];
       if (selectedPatient) {
         customerName = selectedPatient.name;
         opticianName = selectedPatient.optician;
         prescription = selectedPatient.prescription;
+        
+        // Find matching customer in real CRM registry to extract phone & email
+        const matched = crmCustomers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase() === selectedPatient.name.toLowerCase().trim());
+        if (matched) {
+          customerPhone = matched.phone || '';
+          customerEmail = matched.email || '';
+        }
       } else {
         customerName = 'Patient Clinique';
       }
@@ -221,6 +388,8 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
       const cust = crmCustomers[formDirectCustomerIndex];
       if (cust) {
         customerName = `${cust.firstName} ${cust.lastName.toUpperCase()}`;
+        customerPhone = cust.phone || '';
+        customerEmail = cust.email || '';
       } else {
         customerName = 'Client Direct';
       }
@@ -238,10 +407,12 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
       return;
     }
 
-    const newId = `CMD-${Math.floor(2351 + Math.random() * 500)}`;
+    const newId = `CMD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newCmd: CommandeItem = {
       id: newId,
       customer: customerName,
+      customerPhone,
+      customerEmail,
       date: new Date().toISOString().split('T')[0],
       lensesType: formLenses,
       frameModel: formFrame,
@@ -250,19 +421,59 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
       amountPaid: finalPaid,
       paymentMode: formPaymentMode,
       productionDelay: formDelay,
-      status: 'prepared',
+      status: 'in_progress',
       optician: opticianName,
-      prescriptionDetails: prescription
+      prescriptionDetails: prescription,
+      sentToPos: false
     };
 
     setCommandes([newCmd, ...commandes]);
+    
+    // Debit frame model and lenses type from stock & inventory
+    if (formFrame) {
+      debitStockItem(formFrame, 1, `Commande atelier #${newId} - Monture`).catch(() => {});
+    }
+    if (formLenses) {
+      debitStockItem(formLenses, 1, `Commande atelier #${newId} - Verres`).catch(() => {});
+    }
     setIsNewOrderModalOpen(false);
     setSelectedCommande(newCmd);
-    triggerToast(`Commande ${newId} créée avec succès pour ${customerName} !`, "success");
+
+    try {
+      const posInvoicePayload = {
+        orderId: newId,
+        customerName: customerName,
+        totalTtc: formTotalPrice,
+        amountPaid: finalPaid,
+        remainingBalance: formTotalPrice - finalPaid,
+        prescription: prescription,
+        lensesType: formLenses,
+        frameModel: formFrame,
+        sentAt: new Date().toLocaleTimeString('fr-FR'),
+        timestamp: Date.now()
+      };
+
+      localStorage.setItem('pending_optic_pos_order', JSON.stringify(posInvoicePayload));
+      
+      // Dispatch storage event to alert POS module immediately
+      window.dispatchEvent(new Event('storage'));
+      // Custom system transition trigger
+      window.dispatchEvent(new CustomEvent('optic-pos-incoming-order', { detail: posInvoicePayload }));
+
+      triggerToast(`Commande ${newId} créée et envoyée directement au Point de Vente pour encaissement !`, "success");
+    } catch (err) {
+      console.error("Auto POS Sync Failed: ", err);
+      triggerToast(`Commande ${newId} créée avec succès pour ${customerName} !`, "success");
+    }
   };
 
   // Manual payment remainder settlement
   const handlePaymentSettle = (id: string) => {
+    const target = commandes.find(c => c.id === id);
+    if (target?.status === 'finalized') {
+      triggerToast("La commande est déjà validée et finalisée. Aucune action n'est autorisée.", "warn");
+      return;
+    }
     setCommandes(prev => prev.map(cmd => {
       if (cmd.id === id) {
         const updated = { ...cmd, amountPaid: cmd.totalFCFA };
@@ -280,6 +491,11 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
   const handleUpdateStatus = (id: string, newStatus: CommandeItem['status']) => {
     const target = commandes.find(c => c.id === id);
     if (!target) return;
+
+    if (target.status === 'finalized') {
+      triggerToast("La commande est déjà validée et finalisée. Aucune action n'est autorisée.", "warn");
+      return;
+    }
 
     if (newStatus === 'finalized' && !isFullyPaid(target)) {
       triggerToast(`La commande ${id} ne peut pas être finalisée car un solde de ${(target.totalFCFA - target.amountPaid).toLocaleString()} FCFA reste à régler.`, "warn");
@@ -301,11 +517,17 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
 
   // Manually send order to point of sale (incorporate to localStorage pending receipt queue)
   const handleSendToPOS = (cmd: CommandeItem) => {
+    if (cmd.status === 'finalized') {
+      triggerToast("La commande est déjà validée et finalisée. Aucune action n'est autorisée.", "warn");
+      return;
+    }
     try {
       // Structure the item for POS integration
       const posInvoicePayload = {
         orderId: cmd.id,
         customerName: cmd.customer,
+        customerPhone: cmd.customerPhone || '',
+        customerEmail: cmd.customerEmail || '',
         totalTtc: cmd.totalFCFA,
         amountPaid: cmd.amountPaid,
         remainingBalance: cmd.totalFCFA - cmd.amountPaid,
@@ -340,6 +562,366 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
     }
   };
 
+  const handleMarkAsReady = (id: string) => {
+    const cmd = commandes.find(c => c.id === id);
+    if (!cmd) return;
+
+    if (cmd.status === 'finalized') {
+      triggerToast("La commande est déjà validée et finalisée. Aucune action n'est autorisée.", "warn");
+      return;
+    }
+
+    // 1. Update order status to 'prepared'
+    setCommandes(prev => prev.map(c => {
+      if (c.id === id) {
+        const updated = { ...c, status: 'prepared' as const };
+        if (selectedCommande?.id === id) {
+          setSelectedCommande(updated);
+        }
+        return updated;
+      }
+      return c;
+    }));
+
+    // 2. Fetch or lookup customer contact info
+    const matchedCustomerObj = crmCustomers.find((c: any) => {
+      const fullName = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
+      const searchName = cmd.customer.toLowerCase();
+      return fullName === searchName || searchName.includes(fullName) || fullName.includes(searchName);
+    });
+
+    const phone = cmd.customerPhone || matchedCustomerObj?.phone || "+221 77 123 45 67";
+    const email = cmd.customerEmail || matchedCustomerObj?.email || "client@gmail.com";
+    const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - DIRECTION';
+
+    // 3. Create a S.A.V claim so they can contact the client from the S.A.V module
+    const newClaim = {
+      id: `CMD-${cmd.id}`,
+      clientName: cmd.customer,
+      frameSku: cmd.frameModel,
+      issue: `Fabrication d'Atelier terminée. Prête pour livraison. Reste à payer : ${(cmd.totalFCFA - cmd.amountPaid).toLocaleString()} FCFA.`,
+      status: 'Réparé', // Under the S.A.V view, 'Réparé' is ready for collection!
+      date: new Date().toISOString().split('T')[0],
+      warrantyStatus: 'Sous Garantie',
+      branch: boutiqueName,
+      phone: phone,
+      email: email
+    };
+
+    // Save to optic_sav_claims
+    const savedClaims = localStorage.getItem('optic_sav_claims');
+    let currentClaims = [];
+    if (savedClaims) {
+      try { currentClaims = JSON.parse(savedClaims); } catch(e){}
+    }
+    if (!currentClaims.some((c: any) => c.id === newClaim.id)) {
+      localStorage.setItem('optic_sav_claims', JSON.stringify([newClaim, ...currentClaims]));
+    }
+
+    // 4. Create an entry in SMS push logs
+    const newPush = {
+      id: `PUSH-${Math.floor(100 + Math.random() * 900)}`,
+      title: 'Commande prête pour retrait',
+      body: `Bonjour ${cmd.customer}, vos lunettes ${cmd.frameModel} sont prêtes en boutique. Reste à payer: ${(cmd.totalFCFA - cmd.amountPaid).toLocaleString()} FCFA.`,
+      target: cmd.customer,
+      status: 'Délivré ✓',
+      time: new Date().toTimeString().split(' ')[0]
+    };
+    const savedPushes = localStorage.getItem('optic_push_logs');
+    let currentPushes = [];
+    if (savedPushes) {
+      try { currentPushes = JSON.parse(savedPushes); } catch(e){}
+    }
+    localStorage.setItem('optic_push_logs', JSON.stringify([newPush, ...currentPushes]));
+
+    // 5. Trigger event to notify all tabs/modules
+    window.dispatchEvent(new Event('storage'));
+
+    triggerToast(`Commande ${cmd.id} marquée comme PRÊTE et transmise au module Fidélisation & S.A.V !`, "success");
+  };
+
+  const handlePrintMeulageSheet = (cmd: CommandeItem) => {
+    if (!cmd) return;
+
+    const odSphere = cmd.prescriptionDetails?.includes('OD') ? 'Voir prescription' : '+1.25';
+    const ogSphere = cmd.prescriptionDetails?.includes('OG') ? 'Voir prescription' : '+1.00';
+
+    // Fetch real system information from local storage
+    const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - DIRECTION';
+    const companyPhone = localStorage.getItem('optic_company_phone') || '+221 33 800 00 00';
+    const companyEmail = localStorage.getItem('optic_company_email') || 'contact@opticalize.com';
+
+    // Find matched client in real CRM registry data
+    const matchedCustomerObj = crmCustomers.find((c: any) => {
+      const fullName = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
+      const searchName = cmd.customer.toLowerCase();
+      return fullName === searchName || searchName.includes(fullName) || fullName.includes(searchName);
+    });
+
+    const clientPhone = matchedCustomerObj?.phone || 'Non renseigné';
+    const clientEmail = matchedCustomerObj?.email || 'Non renseigné';
+    const clientBirthDate = matchedCustomerObj?.birthDate || 'Non renseignée';
+    const clientSsn = matchedCustomerObj?.ssn || 'Non renseigné';
+    const clientBranch = matchedCustomerObj?.branch || 'DIRECTION';
+
+    const techHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Fiche Technique Meulage - ${cmd.id}</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            color: #000;
+            background: #fff;
+            margin: 0;
+            padding: 20px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 2px solid #000;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px dashed #000;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            font-size: 22px;
+            margin: 0 0 5px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .header h2 {
+            font-size: 15px;
+            margin: 0;
+            font-weight: normal;
+        }
+        .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #000;
+            padding-bottom: 15px;
+        }
+        .meta-item {
+            margin-bottom: 5px;
+        }
+        .meta-label {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .section-title {
+            font-weight: bold;
+            text-transform: uppercase;
+            background: #000;
+            color: #fff;
+            padding: 5px 10px;
+            margin: 20px 0 10px 0;
+            letter-spacing: 1px;
+            font-size: 13px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        th, td {
+            border: 1px solid #000;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background: #f2f2f2;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+        .checklist-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .square-box {
+            width: 12px;
+            height: 12px;
+            border: 1px solid #000;
+            display: inline-block;
+        }
+        .notes-area {
+            border: 1px solid #000;
+            height: 80px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .footer-signatures {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .signature-line {
+            border-top: 1px dashed #000;
+            margin-top: 50px;
+            padding-top: 5px;
+            text-transform: uppercase;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .print-btn-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .print-btn {
+            background: #000;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        @media print {
+            .print-btn-container {
+                display: none;
+            }
+            body {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>${boutiqueName}</h1>
+            <h2>ATELIER TECHNIQUE DE MEULAGE & MONTAGE</h2>
+            <div style="font-size: 11px; margin-top: 5px; font-weight: bold;">Tél: ${companyPhone} | Email: ${companyEmail}</div>
+            <div style="font-size: 10px; margin-top: 3px; color: #555;">AGENCE : ${boutiqueName.toUpperCase()}</div>
+        </div>
+
+        <div class="meta-grid">
+            <div>
+                <div class="meta-item"><span class="meta-label">ID Commande :</span> <strong>${cmd.id}</strong></div>
+                <div class="meta-item"><span class="meta-label">Client :</span> ${cmd.customer}</div>
+                <div class="meta-item"><span class="meta-label">Téléphone :</span> ${clientPhone}</div>
+                <div class="meta-item"><span class="meta-label">Date de Naiss. :</span> ${clientBirthDate}</div>
+                <div class="meta-item"><span class="meta-label">Numéro Sécu (NIR) :</span> ${clientSsn}</div>
+            </div>
+            <div>
+                <div class="meta-item"><span class="meta-label">Date Commande :</span> ${new Date(cmd.date).toLocaleDateString('fr-FR')}</div>
+                <div class="meta-item"><span class="meta-label">Opticien Rattaché :</span> ${cmd.optician}</div>
+                <div class="meta-item"><span class="meta-label">Monture & Modèle :</span> ${cmd.frameModel}</div>
+                <div class="meta-item"><span class="meta-label">Type de Verres :</span> ${cmd.lensesType}</div>
+                <div class="meta-item"><span class="meta-label">Agence de Registre :</span> ${clientBranch}</div>
+            </div>
+        </div>
+
+        <div class="section-title">Mesures Réfraction & Centrage</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Œil</th>
+                    <th>Sphère</th>
+                    <th>Cylindre</th>
+                    <th>Axe</th>
+                    <th>Addition</th>
+                    <th>Demi-Écart (DP)</th>
+                    <th>Hauteur (H)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="font-weight: bold;">OD (Droit)</td>
+                    <td>${odSphere}</td>
+                    <td>Plano</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>31.5 mm</td>
+                    <td>18.0 mm</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: bold;">OG (Gauche)</td>
+                    <td>${ogSphere}</td>
+                    <td>Plano</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>31.5 mm</td>
+                    <td>18.0 mm</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">Instructions Techniques de Meulage</div>
+        <div class="checklist-grid">
+            <div class="checkbox-item"><span class="square-box"></span> Type de Biseau : Plat (Nylor)</div>
+            <div class="checkbox-item"><span class="square-box"></span> Type de Biseau : Pointu (Cerclé)</div>
+            <div class="checkbox-item"><span class="square-box"></span> Type de Biseau : Contre-biseau de sécurité</div>
+            <div class="checkbox-item"><span class="square-box"></span> Rainurage standard</div>
+            <div class="checkbox-item"><span class="square-box"></span> Polissage des tranches (Verre invisible)</div>
+            <div class="checkbox-item"><span class="square-box"></span> Perçage de précision (Percée)</div>
+            <div class="checkbox-item"><span class="square-box"></span> Teinte de verre / Solaire</div>
+            <div class="checkbox-item"><span class="square-box"></span> Traitement hydrophobe / Anti-salissure</div>
+            <div class="checkbox-item"><span class="square-box"></span> Précalibrage requis</div>
+        </div>
+
+        <div class="section-title">Rapport de Contrôle Qualité (Focométrie)</div>
+        <div class="checklist-grid">
+            <div class="checkbox-item"><span class="square-box"></span> Sphères/Cylindres validés</div>
+            <div class="checkbox-item"><span class="square-box"></span> Hauteur & Écarts validés</div>
+            <div class="checkbox-item"><span class="square-box"></span> Alignement horizontal validé</div>
+            <div class="checkbox-item"><span class="square-box"></span> Serrage & Tenue mécanique OK</div>
+            <div class="checkbox-item"><span class="square-box"></span> Finition esthétique impeccable</div>
+            <div class="checkbox-item"><span class="square-box"></span> Nettoyage aux ultrasons complété</div>
+        </div>
+
+        <div class="section-title">Observations Cliniques / Notes Spéciales</div>
+        <div class="notes-area">
+            Prescription rattachée : ${cmd.prescriptionDetails || 'Aucune note spécifique.'}
+        </div>
+
+        <div class="footer-signatures">
+            <div>
+                <div class="signature-line">Signature Opticien-Atelier</div>
+            </div>
+            <div>
+                <div class="signature-line">Visa Contrôle Qualité</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="print-btn-container">
+        <button class="print-btn" onclick="window.print()">Imprimer cette fiche technique</button>
+    </div>
+</body>
+</html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("Erreur: Pop-up bloqué. Veuillez autoriser les pop-ups pour imprimer la fiche.");
+      return;
+    }
+    printWindow.document.write(techHtml);
+    printWindow.document.close();
+  };
+
   const getStatusBadge = (status: CommandeItem['status']) => {
     switch (status) {
       case 'prepared':
@@ -353,7 +935,7 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
         return (
           <span className="px-2.5 py-1 text-[11px] font-extrabold rounded-lg bg-amber-50 text-amber-700 border border-amber-100 flex items-center gap-1.5 w-fit animate-pulse">
             <Clock className="w-3.5 h-3.5" />
-            <span>En cours lab</span>
+            <span>En cours</span>
           </span>
         );
       case 'cancelled':
@@ -367,7 +949,7 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
         return (
           <span className="px-2.5 py-1 text-[11px] font-extrabold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center gap-1.5 w-fit">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Finalisé</span>
+            <span>Terminé</span>
           </span>
         );
     }
@@ -445,7 +1027,7 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
             { id: 'prepared', label: currentLanguage === 'FR' ? 'Préparé' : 'Prepared / Ready' },
             { id: 'in_progress', label: currentLanguage === 'FR' ? 'En cours' : 'In Progress' },
             { id: 'cancelled', label: currentLanguage === 'FR' ? 'Annulé' : 'Cancelled' },
-            { id: 'finalized', label: currentLanguage === 'FR' ? 'Finalisé & Livré' : 'Finalized / Closed' }
+            { id: 'finalized', label: currentLanguage === 'FR' ? 'Terminé' : 'Completed / Delivered' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -657,7 +1239,8 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
                       {/* PAYMENT RESTANT GATEWAY BUTTON */}
                       <button
                         onClick={() => handlePaymentSettle(selectedCommande.id)}
-                        className="w-full py-2 bg-amber-500 hover:bg-amber-600 transition text-white rounded-lg text-[11px] font-bold shadow-sm flex items-center justify-center gap-1.5 cursor-pointer border-0 font-sans"
+                        disabled={selectedCommande.status === 'finalized'}
+                        className="w-full py-2 bg-amber-500 hover:bg-amber-600 transition text-white rounded-lg text-[11px] font-bold shadow-sm flex items-center justify-center gap-1.5 cursor-pointer border-0 font-sans disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         <Wallet className="w-3.5 h-3.5" />
                         Solder le paiement restant ({ (selectedCommande.totalFCFA - selectedCommande.amountPaid).toLocaleString() } FCFA)
@@ -667,100 +1250,116 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
                 </div>
               </div>
 
-              {/* INTEGRATION POINT OF SALE CO-ACTION */}
-              <div className="p-3 bg-blue-50/50 border border-blue-150 rounded-xl space-y-2">
-                <div className="flex items-center gap-1 text-[10px] font-mono text-blue-700 font-bold uppercase tracking-wider">
-                  <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Pont de communication Caisse</span>
+              {selectedCommande.status === 'finalized' && (
+                <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-center space-y-1 mb-4">
+                  <div className="text-emerald-800 font-extrabold uppercase text-xs tracking-wider flex items-center justify-center gap-1.5 font-sans">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-bounce" />
+                    <span>Commande Terminée (Livrée)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-normal font-sans">
+                    Cette commande d'atelier est enregistrée comme Terminée. Aucune action n'est plus autorisée.
+                  </p>
                 </div>
-                <p className="text-[10px] text-slate-505 leading-relaxed">
-                  Exportez directement cette fiche d'atelier vers la Caisse (Point de vente) pour l'impression de ticket et l'intégration comptable.
-                </p>
-                <div className="flex gap-2">
+              )}
+
+              <div className="space-y-3.5 pt-3 border-t border-slate-100">
+                <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">
+                  Actions & Contrôles de la commande :
+                </span>
+
+                {/* 1. Solde Entièrement */}
+                <div className="flex flex-col gap-1.5">
+                  {isFullyPaid(selectedCommande) ? (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold rounded-lg flex items-center gap-1.5 justify-center font-sans">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Commande entièrement soldée</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handlePaymentSettle(selectedCommande.id)}
+                      disabled={selectedCommande.status === 'finalized'}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    >
+                      <DollarSign className="w-3.5 h-3.5" />
+                      <span>Solder entièrement ({ (selectedCommande.totalFCFA - selectedCommande.amountPaid).toLocaleString() } FCFA)</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 2. Commande Déjà Envoyée / Envoyer au POS */}
+                <div className="p-3 bg-blue-50/40 border border-blue-150 rounded-xl space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-blue-700 font-bold uppercase tracking-wider">
+                    <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Pont de communication Caisse</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
+                    Toutes les commandes doivent aller au point de vente pour encaissement et garde de ticket.
+                  </p>
                   <button
                     onClick={() => handleSendToPOS(selectedCommande)}
-                    className="flex-1 py-2 bg-blue-650 hover:bg-blue-600 text-white font-bold rounded-lg text-[10px] font-mono transition flex items-center justify-center gap-1.5 cursor-pointer border-0 uppercase tracking-wider shadow-sm"
+                    disabled={selectedCommande.status === 'finalized'}
+                    className={`w-full py-2.5 rounded-lg text-[10px] font-mono transition flex items-center justify-center gap-1.5 cursor-pointer border uppercase tracking-wider font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
+                      selectedCommande.sentToPos 
+                        ? 'bg-blue-100 border-blue-300 text-blue-800' 
+                        : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-800 shadow-sm'
+                    }`}
                   >
                     <Send className="w-3.5 h-3.5" />
-                    {selectedCommande.sentToPos ? "Commande déjà envoyée (Réexpédier)" : "Envoyer au Point de Vente"}
+                    <span>{selectedCommande.sentToPos ? "Commande déjà envoyée (Réexpédier)" : "Envoyer au Point de Vente"}</span>
                   </button>
                 </div>
-              </div>
 
-              {/* Status and Finalization control */}
-              <div className="pt-3 border-t border-slate-100 space-y-2.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">Avancement fabrication & Assemblage :</span>
-                
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* 3. Commande Prête */}
                   <button
-                    onClick={() => handleUpdateStatus(selectedCommande.id, 'prepared')}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold border transition text-center cursor-pointer ${
+                    onClick={() => handleMarkAsReady(selectedCommande.id)}
+                    disabled={selectedCommande.status === 'finalized'}
+                    className={`py-2 px-2.5 rounded-lg text-[10.5px] font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
                       selectedCommande.status === 'prepared' 
-                        ? 'bg-blue-50 border-blue-200 text-blue-700 font-black' 
-                        : 'bg-white border-slate-150 hover:bg-slate-50 text-slate-600'
+                        ? 'bg-indigo-100 border-indigo-300 text-indigo-800 font-black' 
+                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-600'
                     }`}
                   >
-                    Préparé (Ready)
+                    <PackageCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Commande prête</span>
                   </button>
-                  <button
-                    onClick={() => handleUpdateStatus(selectedCommande.id, 'in_progress')}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold border transition text-center cursor-pointer ${
-                      selectedCommande.status === 'in_progress' 
-                        ? 'bg-amber-50 border-amber-200 text-amber-700 font-black' 
-                        : 'bg-white border-slate-150 hover:bg-slate-50 text-slate-600'
-                    }`}
-                  >
-                    Mettre En Cours lab
-                  </button>
-                </div>
 
-                {/* FINALIZE BUTTON WITH INSUFFICIENT SOLDE PROTECTION */}
-                {isFullyPaid(selectedCommande) ? (
+                  {/* 4. Finaliser & Livrer */}
                   <button
                     onClick={() => handleUpdateStatus(selectedCommande.id, 'finalized')}
                     disabled={selectedCommande.status === 'finalized'}
-                    className={`w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border-0 shadow-sm cursor-pointer ${
-                      selectedCommande.status === 'finalized'
-                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-[1.01]'
+                    className={`py-2 px-2.5 rounded-lg text-[10.5px] font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
+                      selectedCommande.status === 'finalized' 
+                        ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-black' 
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-800 font-extrabold shadow-xs'
                     }`}
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>{selectedCommande.status === 'finalized' ? "Commande déjà livrée et close" : "Finaliser la commande & Livrer"}</span>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-100" />
+                    <span>Finaliser & livrer</span>
                   </button>
-                ) : (
-                  <div className="space-y-1.5">
-                    <button
-                      disabled
-                      title="Solder le paiement restant pour débloquer"
-                      className="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-100 text-slate-400 border border-slate-200 flex items-center justify-center gap-2 cursor-not-allowed uppercase tracking-wider"
-                    >
-                      <Lock className="w-4 h-4 text-rose-500 animate-pulse" />
-                      <span>Verrouillé - Reste à payer</span>
-                    </button>
-                    <span className="text-[9.5px] text-rose-600 font-medium block text-center">
-                      ⚠️ La commande ne peut être finalisée que si le client a soldé la totalité du montant.
-                    </span>
-                  </div>
-                )}
+                </div>
 
+                {/* 5. Annuler */}
                 <button
                   onClick={() => handleUpdateStatus(selectedCommande.id, 'cancelled')}
-                  className="w-full py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 hover:border-red-350 rounded-lg text-[10px] font-mono tracking-wider transition flex items-center justify-center gap-1 cursor-pointer"
+                  disabled={selectedCommande.status === 'finalized'}
+                  className={`w-full py-2 px-3 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
+                    selectedCommande.status === 'cancelled' 
+                      ? 'bg-red-50 border-red-200 text-red-700 font-black' 
+                      : 'bg-white hover:bg-red-50 text-red-600 border-red-200 hover:border-red-350'
+                  }`}
                 >
                   <XCircle className="w-3.5 h-3.5" />
-                  Annuler le bon d'atelier
+                  <span>{selectedCommande.status === 'cancelled' ? "Commande déjà annulée" : "Annuler la commande"}</span>
                 </button>
-              </div>
 
-              {/* Lab print */}
-              <div>
+                {/* 6. Imprimer fiche technique de meulage */}
                 <button
-                  onClick={() => alert(`Impression du bon de préparation technique d'atelier (${selectedCommande.id}).`)}
-                  className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-250 rounded-xl text-[10.5px] font-sans font-bold text-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  onClick={() => handlePrintMeulageSheet(selectedCommande)}
+                  className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-250 rounded-xl text-[11px] font-sans font-bold text-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Imprimer fiche technique meulage</span>
+                  <span>Imprimer fiche technique de meulage</span>
                 </button>
               </div>
             </motion.div>
@@ -813,7 +1412,7 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
                       type="button"
                       onClick={() => {
                         setOrderType('clinique');
-                        const sel = PRESET_CLINIC_PATIENTS[formPatientIndex];
+                        const sel = clinicalPatients[formPatientIndex] || clinicalPatients[0];
                         if (sel) {
                           setFormPrescriptionDetails(sel.prescription);
                           setFormOptician(sel.optician);
@@ -855,28 +1454,39 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
                       <span className="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-mono font-bold">Synchronisé CRM</span>
                     </div>
                     
-                    <select
-                      value={formPatientIndex}
-                      onChange={(e) => handlePatientIndexChange(parseInt(e.target.value))}
-                      className="w-full text-xs font-semibold bg-white border border-slate-250 p-2.5 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                    >
-                      {PRESET_CLINIC_PATIENTS.map((p, idx) => (
-                        <option key={idx} value={idx}>
-                          {p.name} — Praticien : {p.optician}
-                        </option>
-                      ))}
-                    </select>
+                    {clinicalPatients.length > 0 ? (
+                      <>
+                        <select
+                          value={formPatientIndex}
+                          onChange={(e) => handlePatientIndexChange(parseInt(e.target.value))}
+                          className="w-full text-xs font-semibold bg-white border border-slate-250 p-2.5 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                        >
+                          {clinicalPatients.map((p, idx) => (
+                            <option key={idx} value={idx}>
+                              {p.name} — Praticien : {p.optician}
+                            </option>
+                          ))}
+                        </select>
 
-                    {/* Prescription autoload feedback block */}
-                    <div className="bg-white p-3 rounded-xl border border-slate-150 text-xs text-slate-700 space-y-1">
-                      <div className="text-[9px] uppercase font-black text-slate-400 tracking-widest block">Diagnostics rattachés détectés :</div>
-                      <div className="font-mono font-black text-rose-800 leading-normal">
-                        {PRESET_CLINIC_PATIENTS[formPatientIndex]?.prescription || 'Aucune prescription trouvée.'}
+                        {/* Prescription autoload feedback block */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-150 text-xs text-slate-700 space-y-1">
+                          <div className="text-[9px] uppercase font-black text-slate-400 tracking-widest block">Diagnostics rattachés détectés :</div>
+                          <div className="font-mono font-black text-rose-800 leading-normal">
+                            {clinicalPatients[formPatientIndex]?.prescription || 'Aucune prescription trouvée.'}
+                          </div>
+                          <div className="text-[9.5px] text-slate-500 font-medium">
+                            Praticien rattaché du dossier clinique : <span className="font-bold text-slate-700">{clinicalPatients[formPatientIndex]?.optician || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="p-4 bg-amber-50 border border-amber-200 text-amber-850 rounded-2xl text-xs space-y-2">
+                        <div className="font-bold flex items-center gap-1">⚠️ Aucune ordonnance active disponible</div>
+                        <p className="text-[11px] leading-relaxed text-amber-700">
+                          Il n'y a actuellement aucun patient prescrit avec une ordonnance clinique. Veuillez d'abord créer un examen et rédiger une ordonnance dans l'<strong>Espace Clinique</strong>.
+                        </p>
                       </div>
-                      <div className="text-[9.5px] text-slate-500 font-medium">
-                        Praticien rattaché du dossier clinique : <span className="font-bold text-slate-700">{PRESET_CLINIC_PATIENTS[formPatientIndex]?.optician || 'N/A'}</span>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3 animate-fade-in">
@@ -941,7 +1551,7 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
                     onChange={(e) => setFormFrame(e.target.value)}
                     className="w-full text-xs font-semibold bg-white border border-slate-200 p-2 rounded-xl text-slate-800 cursor-pointer"
                   >
-                    {PRESET_FRAMES.map((f, idx) => (
+                    {realFrames.map((f, idx) => (
                       <option key={idx} value={f}>{f}</option>
                     ))}
                   </select>
@@ -954,7 +1564,7 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
                     onChange={(e) => setFormLenses(e.target.value)}
                     className="w-full text-xs font-semibold bg-white border border-slate-200 p-2 rounded-xl text-slate-800 cursor-pointer"
                   >
-                    {PRESET_LENSES.map((l, idx) => (
+                    {realLenses.map((l, idx) => (
                       <option key={idx} value={l}>{l}</option>
                     ))}
                   </select>
@@ -991,16 +1601,13 @@ export default function CommandeModule({ currentLanguage = 'FR' }: CommandeModul
                     <input
                       type="number"
                       required
-                      min={5000}
-                      step={50}
+                      readOnly
                       value={formTotalPrice}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setFormTotalPrice(val);
-                        setFormDeposit(Math.floor(val * 0.4));
-                      }}
-                      className="w-full pl-12 pr-4 py-2 font-mono font-bold bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-blue-900"
+                      className="w-full pl-12 pr-4 py-2 font-mono font-bold bg-slate-100 border border-slate-200 rounded-xl focus:outline-none text-slate-700 cursor-not-allowed"
                     />
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium leading-normal mt-1 bg-slate-50 p-2 rounded-lg border border-slate-200/60">
+                    <span className="font-semibold text-slate-700">Somme automatique :</span> {getFramePrice(formFrame).toLocaleString()} FCFA (Monture) + {getLensPrice(formLenses).toLocaleString()} FCFA (Verres)
                   </div>
                 </div>
 

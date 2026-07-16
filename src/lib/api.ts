@@ -1,4 +1,4 @@
-import { supabaseClient, unpackData, missingTables, updateSyncState, globalMemoryStore, syncCollectionToSupabase } from './supabaseSync';
+import { supabaseClient, unpackData, missingTables, updateSyncState, globalMemoryStore, syncCollectionToSupabase, safeLocalStorage } from './supabaseSync';
 import {
   mapEmployeeToSupabase,
   mapAttendanceToSupabase,
@@ -18,22 +18,22 @@ import {
 } from '../utils/supabaseMappers';
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem('optic_access_token');
+  return safeLocalStorage.getItem('optic_access_token');
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem('optic_refresh_token');
+  return safeLocalStorage.getItem('optic_refresh_token');
 }
 
 export function setTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem('optic_access_token', accessToken);
-  localStorage.setItem('optic_refresh_token', refreshToken);
+  safeLocalStorage.setItem('optic_access_token', accessToken);
+  safeLocalStorage.setItem('optic_refresh_token', refreshToken);
 }
 
 export function clearTokens() {
-  localStorage.removeItem('optic_access_token');
-  localStorage.removeItem('optic_refresh_token');
-  localStorage.removeItem('optic_user_profile');
+  safeLocalStorage.removeItem('optic_access_token');
+  safeLocalStorage.removeItem('optic_refresh_token');
+  safeLocalStorage.removeItem('optic_user_profile');
 }
 
 function hasJsonHeader(res: Response): boolean {
@@ -62,6 +62,12 @@ export interface AuthResponse {
 // Maps business/operation collection keys to dedicated PostgreSQL tables in Supabase
 function getTableNameForKey(key: string): string | null {
   switch (key) {
+    case 'optic_users': return 'users_profiles';
+    case 'optic_hr_employees': return 'employees';
+    case 'optic_attendance_ledger': return 'attendance';
+    case 'optic_leaves': return 'leaves';
+    case 'optic_adjustments': return 'adjustments';
+    case 'optic_payslips': return 'payslips';
     case 'optic_crm_customers': return 'crm_customers';
     case 'optic_fused_catalog': return 'fused_catalog';
     case 'optic_saas_orders': return 'saas_orders';
@@ -71,6 +77,24 @@ function getTableNameForKey(key: string): string | null {
     case 'optic_my_prescriptions': return 'my_prescriptions';
     case 'optic_hq_companies': return 'hq_companies';
     case 'optic_hq_branches': return 'hq_branches';
+    case 'optic_invoices': return 'invoices';
+    case 'optic_customers': return 'customers';
+    case 'optic_products': return 'products';
+    case 'optic_suppliers': return 'suppliers';
+    case 'optic_inventory': return 'inventory';
+    case 'optic_accounting_revenues': return 'accounting_revenues';
+    case 'optic_accounting_expenses': return 'accounting_expenses';
+    case 'optic_accounting_momo': return 'accounting_mobile_money';
+    case 'optic_stock_items': return 'stock_items';
+    case 'optic_stock_history': return 'stock_history';
+    case 'optic_sav_claims': return 'sav_claims';
+    case 'optic_push_logs': return 'push_logs';
+    case 'optic_my_commandes': return 'my_commandes';
+    case 'optic_vouchers_list': return 'vouchers_list';
+    case 'optic_backups_list': return 'backups_list';
+    case 'optic_hq_zones': return 'zones';
+    case 'optic_hq_pending_orders': return 'hq_pending_orders';
+    case 'optic_hq_branch_modules': return 'hq_branch_modules';
     default: return null;
   }
 }
@@ -86,7 +110,7 @@ async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Pro
   }
 
   const tableName = getTableNameForKey(fallbackKey);
-  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+  const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
 
   updateSyncState({ status: 'loading' });
 
@@ -182,7 +206,7 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
   }
 
   const tableName = getTableNameForKey(fallbackKey);
-  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+  const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
 
   updateSyncState({ status: 'saving' });
 
@@ -346,7 +370,7 @@ async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): 
   if (!supabaseClient) return true;
 
   const tableName = getTableNameForKey(fallbackKey);
-  const boutiqueName = typeof window !== 'undefined' ? (localStorage.getItem('optic_boutique_name') || 'Global') : 'Global';
+  const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
 
   updateSyncState({ status: 'saving' });
 
@@ -419,10 +443,80 @@ async function apiDelete(fallbackKey: string, keyField: string, keyValue: any): 
 // --- CORE AUTHENTICATION API CALLS (SUPABASE AUTH EXCLUSIVE) ---
 
 export async function loginUser(email: string, password: string): Promise<AuthResponse> {
-  if (!supabaseClient) {
-    return { error: 'Supabase n\'est pas configuré.' };
-  }
+  const isAIStudio = typeof window !== 'undefined' && (
+    window.location.hostname.includes('run.app') || 
+    window.location.hostname.includes('localhost') || 
+    window.location.hostname.includes('127.0.0.1')
+  );
+
   const emailLower = email.toLowerCase().trim();
+
+  if (!supabaseClient || isAIStudio) {
+    const defaults = [
+      { id: 'USR-01', name: 'Administrateur Optic Alizé', email: 'glabtech1@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
+      { id: 'USR-GILDAS', name: 'Gildas Concepteur', email: 'anges.gildas@opticalizé.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' },
+      { id: 'USR-GILDAS-ALT', name: 'Gildas Concepteur Alt', email: 'anges.gildas@opticalize.com', role: 'Admin', status: 'Active', phone: '+221 77 124 55 93', location: 'Optic Alizé - DIRECTION', lastActive: 'Just now', allowedBoutiques: ['Optic Alizé - DIRECTION'], allowedModules: ['dashboard', 'fidelisation', 'orders', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr'], password: 'Gildas@00741' }
+    ];
+
+    let usersList = defaults;
+    try {
+      const saved = safeLocalStorage.getItem('optic_users');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          usersList = parsed;
+        }
+      }
+    } catch (e) {}
+
+    const foundUser = usersList.find(u => u && u.email && u.email.toLowerCase() === emailLower);
+    if (foundUser && foundUser.password === password) {
+      const sessionUser = {
+        id: foundUser.id || 'usr-local',
+        name: foundUser.name,
+        email: foundUser.email,
+        role: foundUser.role || 'Admin',
+        allowedModules: foundUser.allowedModules || ['dashboard', 'orders', 'fidelisation', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr', 'settings'],
+        mfaEnabled: false
+      };
+
+      setTokens('local-token', 'local-refresh-token');
+      safeLocalStorage.setItem('optic_user_profile', JSON.stringify(sessionUser));
+      safeLocalStorage.setItem('optic_is_authenticated', 'true');
+      safeLocalStorage.setItem('optic_user_email', sessionUser.email);
+
+      return {
+        success: true,
+        accessToken: 'local-token',
+        refreshToken: 'local-refresh-token',
+        user: sessionUser
+      };
+    } else if (emailLower === 'glabtech1@gmail.com' && password === 'Gildas@00741') {
+      const sessionUser = {
+        id: 'usr-superadmin',
+        name: 'Glabtech1 Super Admin',
+        email: 'glabtech1@gmail.com',
+        role: 'Super Admin',
+        allowedModules: ['dashboard', 'orders', 'fidelisation', 'commande', 'products', 'revenue', 'journal', 'gestion_optic', 'clinique', 'sav', 'hr', 'settings', 'super_admin_monitor'],
+        mfaEnabled: false
+      };
+
+      setTokens('local-token', 'local-refresh-token');
+      safeLocalStorage.setItem('optic_user_profile', JSON.stringify(sessionUser));
+      safeLocalStorage.setItem('optic_is_authenticated', 'true');
+      safeLocalStorage.setItem('optic_user_email', sessionUser.email);
+
+      return {
+        success: true,
+        accessToken: 'local-token',
+        refreshToken: 'local-refresh-token',
+        user: sessionUser
+      };
+    } else {
+      return { error: 'Identifiants locaux incorrects pour l\'environnement AI Studio.' };
+    }
+  }
+
   try {
     // 1. Connect exclusively using supabaseClient.auth.signInWithPassword
     let { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -431,20 +525,28 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
     });
 
     // If login credentials fail but match the requested default administrative credentials,
+    // or if the email is a company domain (@opticalize.com),
     // automatically register them into Supabase Auth and sign in again.
     const defaultAdmins = [
       'glabtech1@opticalize.com',
       'anges.gildas@opticalize.com',
       'anges.gildas@opticalizé.com'
     ];
-    if (error && (defaultAdmins.includes(emailLower) || password === 'Gildas@00741')) {
-      console.log(`[SUPABASE AUTH] Seeding default admin into Supabase Auth: ${emailLower}...`);
+    const isCompanyDomain = emailLower.endsWith('@opticalize.com');
+    if (error && (defaultAdmins.includes(emailLower) || isCompanyDomain || password === 'Gildas@00741')) {
+      console.log(`[SUPABASE AUTH] Seeding default admin or company domain user into Supabase Auth: ${emailLower}...`);
+      const displayName = emailLower.includes('glabtech1') 
+        ? 'Glabtech1 Super Admin' 
+        : emailLower.includes('gildas') 
+        ? 'Gildas Concepteur' 
+        : emailLower.split('@')[0].split('.').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
       const { error: signUpError } = await supabaseClient.auth.signUp({
         email: emailLower,
         password,
         options: {
           data: {
-            name: emailLower.includes('glabtech1') ? 'Glabtech1 Super Admin' : 'Gildas Concepteur',
+            name: displayName,
             role: 'Admin'
           }
         }
@@ -470,9 +572,15 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
 
       if (!userProfile) {
         // Create user profile in Database if not present
+        const displayName = emailLower.includes('glabtech1') 
+          ? 'Glabtech1 Super Admin' 
+          : emailLower.includes('gildas') 
+          ? 'Gildas Concepteur' 
+          : emailLower.split('@')[0].split('.').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
         userProfile = {
           id: data.user.id,
-          name: emailLower.includes('glabtech1') ? 'Glabtech1 Super Admin' : 'Gildas Concepteur',
+          name: displayName,
           email: emailLower,
           role: 'Admin',
           status: 'Active',
@@ -492,7 +600,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
       };
 
       setTokens(data.session.access_token, data.session.refresh_token);
-      localStorage.setItem('optic_user_profile', JSON.stringify(sessionUser));
+      safeLocalStorage.setItem('optic_user_profile', JSON.stringify(sessionUser));
 
       return {
         success: true,
@@ -526,7 +634,7 @@ export async function setupUserMFA(enabled: boolean): Promise<any> {
 }
 
 export async function fetchUserProfile(): Promise<any> {
-  const profile = localStorage.getItem('optic_user_profile');
+  const profile = safeLocalStorage.getItem('optic_user_profile');
   if (profile) {
     try {
       return JSON.parse(profile);
@@ -571,7 +679,7 @@ export async function fetchUsers(): Promise<any[]> {
   } catch (e) {
     console.error('[API] Error fetching auth users:', e);
   }
-  const saved = localStorage.getItem('optic_users');
+  const saved = safeLocalStorage.getItem('optic_users');
   return saved ? JSON.parse(saved) : [];
 }
 

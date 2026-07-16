@@ -24,7 +24,7 @@ interface SimulatedExam {
 
 const SIMULATED_EXAMS: SimulatedExam[] = [
   { id: '1', patientName: 'Jean Dupont', time: '10:00', day: 18, type: 'Examen de vue', advisor: 'Dr. Clavel' },
-  { id: '2', patientName: 'Hélène Dubois', time: '11:30', day: 18, type: 'Livraison d\'équipement', advisor: 'Antoine Roussel' },
+  { id: '2', patientName: 'Sophie Martin', time: '11:30', day: 18, type: 'Livraison d\'équipement', advisor: 'Antoine Roussel' },
   { id: '3', patientName: 'Antoine Roussel', time: '14:00', day: 20, type: 'Ajustement monture', advisor: 'Mélanie Lopez' },
   { id: '4', patientName: 'Marc Lemaire', time: '09:15', day: 22, type: 'Visite de contrôle', advisor: 'Dr. Lecerf' },
   { id: '5', patientName: 'Sophie Bernard', time: '16:45', day: 25, type: 'Examen de vue', advisor: 'Dr. Clavel' },

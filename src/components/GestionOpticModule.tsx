@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
+import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
 import { motion, AnimatePresence } from 'motion/react';
 import { fetchCustomers, saveCustomer, fetchProducts, saveProduct, deleteCustomer, deleteProduct } from '../lib/api';
 import { 
@@ -72,19 +74,12 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map(b => ({
             ...b,
-            name: b.name.replace(/Boutique/g, 'Agence')
+            name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
           }));
         }
       }
     } catch (e) {}
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-    return [
-      { id: 'store-dk', name: 'Agence Alpha', country: 'Zone Ouest', city: 'Dakar' },
-      { id: 'store-ab', name: 'Agence Bêta', country: 'Zone Ouest', city: 'Abidjan' },
-      { id: 'store-lm', name: 'Agence Gamma', country: 'Zone Ouest', city: 'Lomé' }
-    ];
+    return [];
   });
 
   const [selectedOpticBoutique, setSelectedOpticBoutique] = useState<string>(() => {
@@ -112,11 +107,11 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
         if (Array.isArray(parsed)) branchesList = parsed;
       }
       if (branchesList.length > 0) {
-        return branchesList.map((b, index) => {
-          const storeIdFallback = index === 0 ? 'store-dk' : index === 1 ? 'store-ab' : index === 2 ? 'store-lm' : `store-${b.id}`;
-          return {
-            id: storeIdFallback,
-            name: b.name.replace(/Boutique/g, 'Agence'),
+          return branchesList.map((b, index) => {
+            const storeIdFallback = index === 0 ? 'store-dk' : index === 1 ? 'store-ab' : index === 2 ? 'store-lm' : `store-${b.id}`;
+            return {
+              id: storeIdFallback,
+              name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : '',
             country: b.zone_id === 'ZONE-UEMOA' ? 'Zone Ouest' : b.zone_id === 'ZONE-CEMAC' ? 'Zone Centrale' : 'Zone Nord',
             items: []
           };
@@ -124,30 +119,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
       }
     } catch (e) {}
 
-    if (localStorage.getItem('optic_system_factory_reset') === 'true') {
-      return [];
-    }
-
-    return [
-      {
-        id: 'store-dk',
-        name: 'Agence Alpha',
-        country: 'Zone Ouest',
-        items: []
-      },
-      {
-        id: 'store-ab',
-        name: 'Agence Bêta',
-        country: 'Zone Ouest',
-        items: []
-      },
-      {
-        id: 'store-lm',
-        name: 'Agence Gamma',
-        country: 'Zone Ouest',
-        items: []
-      }
-    ];
+    return [];
   });
 
   React.useEffect(() => {
@@ -159,13 +131,13 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
           if (Array.isArray(parsed)) {
             setLocalBranches(parsed.map(b => ({
               ...b,
-              name: b.name.replace(/Boutique/g, 'Agence')
+              name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : ''
             })));
             setBoutiqueStocks(parsed.map((b, index) => {
               const storeIdFallback = index === 0 ? 'store-dk' : index === 1 ? 'store-ab' : index === 2 ? 'store-lm' : `store-${b.id}`;
               return {
                 id: storeIdFallback,
-                name: b.name.replace(/Boutique/g, 'Agence'),
+                name: b.name ? String(b.name).replace(/Optic Alizé DÉPÔT CENTRAL/gi, 'Optic Alizé DIRECTION').replace(/DÉPÔT CENTRAL|DEPOT CENTRAL|Dépôt Central/gi, 'DIRECTION').replace(/Boutique/g, 'Agence') : '',
                 country: b.zone_id === 'ZONE-UEMOA' ? 'Zone Ouest' : b.zone_id === 'ZONE-CEMAC' ? 'Zone Centrale' : 'Zone Nord',
                 items: []
               };
@@ -192,6 +164,302 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
   const [stockTransferDest, setStockTransferDest] = useState('store-ab');
   const [transferSku, setTransferSku] = useState('RB2140-50');
   const [transferWeightQty, setTransferWeightQty] = useState('');
+
+  const [showDirectTransferModal, setShowDirectTransferModal] = useState(false);
+  const [directTransferDestId, setDirectTransferDestId] = useState('store-dk');
+  const [directTransferSku, setDirectTransferSku] = useState('RB2140-50');
+  const [directTransferQty, setDirectTransferQty] = useState('');
+
+  const generateBonEnvoiPDF = (storeName: string, item: any, qty: number) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("Le bloqueur de fenêtres pop-up a empêché l'ouverture automatique du Bon d'Envoi PDF. Veuillez autoriser les popups pour Optic Alizé.");
+      return;
+    }
+
+    const reference = `BE-REAPP-${Math.floor(100000 + Math.random() * 900000)}`;
+    const dateStr = new Date().toLocaleString('fr-FR');
+    const totalVal = (item.priceFCFA || item.price || 0) * qty;
+    const logoBase64 = localStorage.getItem('optic_app_logo_base64') || defaultLogo;
+
+    const documentHtml = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Bon d'Envoi - ${reference}</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            color: #1e293b;
+            background-color: #fff;
+            margin: 0;
+            padding: 40px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 2px solid #0f172a;
+            border-radius: 16px;
+            padding: 35px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 3px double #e2e8f0;
+            padding-bottom: 25px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0 0 5px 0;
+            color: #0f172a;
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: -0.025em;
+        }
+        .header p {
+            margin: 3px 0;
+            color: #64748b;
+            font-size: 11px;
+        }
+        .title-block {
+            text-align: center;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+        .title-block h2 {
+            margin: 0 0 5px 0;
+            color: #0f172a;
+            font-size: 14px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .title-block p {
+            margin: 0;
+            font-family: monospace;
+            font-size: 12px;
+            color: #2563eb;
+            font-weight: bold;
+        }
+        .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .meta-card {
+            background-color: #f8fafc;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+        }
+        .meta-card-title {
+            font-size: 10px;
+            color: #64748b;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-bottom: 8px;
+            letter-spacing: 0.05em;
+        }
+        .meta-card-value {
+            font-size: 13px;
+            font-weight: bold;
+            color: #0f172a;
+        }
+        .table-style {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        .table-style th {
+            background-color: #0f172a;
+            color: #ffffff;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: bold;
+            padding: 12px;
+            text-align: left;
+            letter-spacing: 0.05em;
+        }
+        .table-style td {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 11px;
+        }
+        .table-style tr:last-child td {
+            border-bottom: 2px solid #0f172a;
+        }
+        .total-box {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 30px;
+        }
+        .total-card {
+            background: #0f172a;
+            color: #ffffff;
+            padding: 15px 25px;
+            border-radius: 10px;
+            text-align: right;
+        }
+        .total-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            font-weight: bold;
+        }
+        .total-amount {
+            font-size: 18px;
+            font-weight: 900;
+            font-family: monospace;
+            margin-top: 2px;
+        }
+        .signatures {
+            margin-top: 40px;
+            border-top: 1px dashed #cbd5e1;
+            padding-top: 25px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .signature-box {
+            width: 45%;
+        }
+        .signature-title {
+            font-size: 10px;
+            color: #64748b;
+            font-family: monospace;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .stamp {
+            height: 60px;
+            background-color: #f8fafc;
+            border-radius: 8px;
+            border: 1px dashed #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-style: italic;
+            color: #94a3b8;
+            font-size: 10px;
+        }
+        .footer-banner {
+            margin-top: 35px;
+            background-color: #0f172a;
+            color: #94a3b8;
+            padding: 12px;
+            text-align: center;
+            font-size: 9px;
+            font-family: monospace;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        @media print {
+            body { padding: 0; }
+            .container { border: none; box-shadow: none; padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 3px double #0f172a; padding-bottom: 25px; margin-bottom: 30px;">
+            <div style="display: flex; align-items: center;">
+                ${logoBase64 ? `<img src="${logoBase64}" style="max-height: 60px; max-width: 160px; object-fit: contain; margin-right: 20px;" />` : `<span style="font-size: 32px; margin-right: 15px;">👓</span>`}
+                <div>
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a; letter-spacing: 0.05em;">OPTIC ALIZE</h1>
+                    <h2 style="margin: 2px 0; font-size: 11px; font-weight: 800; color: #2563eb; text-transform: uppercase; letter-spacing: 0.05em;">DEPARTEMENT GESTION STOCKS</h2>
+                    <p style="margin: 2px 0 0 0; font-size: 9px; color: #475569; font-weight: 500;">Téléphone: +221 77 124 55 93 | Email: contact@opticalize.com</p>
+                    <p style="margin: 2px 0 0 0; font-size: 9px; color: #475569; font-weight: 500;">Situation : Boulevard du Front de Terre, Dakar, Sénégal</p>
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span style="display: inline-block; background-color: #0f172a; color: #ffffff; font-size: 9px; font-weight: 900; padding: 5px 12px; border-radius: 6px; font-family: monospace; text-transform: uppercase; letter-spacing: 0.05em;">BON D'ENVOI</span>
+                <p style="font-size: 9px; color: #64748b; margin-top: 5px; font-weight: 600;">Émis le : ${dateStr}</p>
+            </div>
+        </div>
+
+        <div class="title-block">
+            <h2>BON D'ENVOI & BORDEREAU DE LIVRAISON</h2>
+            <p>${reference}</p>
+        </div>
+
+        <div class="meta-grid">
+            <div class="meta-card">
+                <div class="meta-card-title">Expéditeur (Point de Stockage)</div>
+                <div class="meta-card-value">Base de Stockage Centrale</div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Optic Alizé Direction</div>
+            </div>
+            <div class="meta-card">
+                <div class="meta-card-title">Destinataire (Agence Cible)</div>
+                <div class="meta-card-value">${storeName}</div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Transfert Inter-magasins virtuel & physique</div>
+            </div>
+        </div>
+
+        <table class="table-style">
+            <thead>
+                <tr>
+                    <th>Référence (SKU)</th>
+                    <th>Désignation de l'Article</th>
+                    <th>Type / Catégorie</th>
+                    <th style="text-align: center;">Quantité Envoyée</th>
+                    <th style="text-align: right;">Valeur Unit.</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="font-family: monospace; font-weight: bold; color: #2563eb;">${item.sku}</td>
+                    <td><strong>${item.name}</strong><br/><span style="font-size: 9px; color: #64748b;">${item.spec || 'Standard optique calibré'}</span></td>
+                    <td style="font-family: monospace;">${item.type || 'N/A'}</td>
+                    <td style="text-align: center; font-weight: bold; font-size: 12px; color: #0f172a;">${qty} u.</td>
+                    <td style="text-align: right; font-family: monospace;">${(item.priceFCFA || 0).toLocaleString()} FCFA</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="total-box">
+            <div class="total-card">
+                <div class="total-label">VALEUR GLOBALE DU TRANSFERT</div>
+                <div class="total-amount">${totalVal.toLocaleString()} FCFA</div>
+            </div>
+        </div>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-title">VISA EXPÉDITION (Atelier Central)</div>
+                <div class="stamp" style="border-color: #2563eb; color: #2563eb; background-color: #f0fdf4;">✓ DÉPART CONFORME</div>
+            </div>
+            <div class="signature-box" style="text-align: right;">
+                <div class="signature-title">ACCUSÉ RÉCEPTION (Boutique)</div>
+                <div class="stamp">[ SIGNATURE PHYSIQUE À LA RÉCEPTION ]</div>
+            </div>
+        </div>
+
+        <div class="footer-banner">
+            DOCUMENT LOGISTIQUE COMPLIANT G-LAB TECH. CE BORDEREAU DOIT ACCOMPAGNER LES ARTICLES PHYSIQUES.
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 300);
+        };
+    </script>
+</body>
+</html>`;
+
+    printWindow.document.write(documentHtml);
+    printWindow.document.close();
+  };
 
   const handleBoutiqueStockSupply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -223,26 +491,138 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     };
     syncProductToDb(updatedComp);
 
-    // Add to Boutique Stock
+    // Add to Boutique Stock (Virtually)
     const updated = boutiqueStocks.map(store => {
       if (store.id === selectedSupplyStoreId) {
-        return {
-          ...store,
-          items: store.items.map(item => {
+        const existingItem = store.items?.find((item: any) => item.sku === supplySku);
+        let updatedItems;
+        if (existingItem) {
+          updatedItems = store.items.map((item: any) => {
             if (item.sku === supplySku) {
               return { ...item, qty: item.qty + val };
             }
             return item;
-          })
+          });
+        } else {
+          updatedItems = [
+            ...(store.items || []),
+            {
+              sku: targetComp.sku,
+              name: targetComp.name,
+              spec: targetComp.spec || 'Standard optique calibré',
+              qty: val
+            }
+          ];
+        }
+        return {
+          ...store,
+          items: updatedItems
         };
       }
       return store;
     });
 
+    const targetStore = boutiqueStocks.find(b => b.id === selectedSupplyStoreId);
+    const storeName = targetStore ? targetStore.name : 'la boutique';
+
     setBoutiqueStocks(updated);
     setShowSupplyModal(false);
     setSupplyQty('');
-    alert(`Transfert logistique réussi : -${val} unités déduites du Stock Général et ajoutées à la boutique.`);
+
+    // Dynamically generate the PDF Bon d'Envoi
+    generateBonEnvoiPDF(storeName, targetComp, val);
+
+    alert(`Transfert logistique virtuel réussi :\n-${val} unités déduites de la base de stockage (Stock Général) et ajoutées à l'agence : ${storeName}.\n\nLe Bon d'Envoi PDF d'accompagnement physique a été généré automatiquement.`);
+  };
+
+  const handleDirectTransferToAgency = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!directTransferDestId || !directTransferSku || !directTransferQty) {
+      alert("Veuillez remplir tous les champs du transfert direct.");
+      return;
+    }
+    const val = parseInt(directTransferQty);
+    if (isNaN(val) || val <= 0) {
+      alert("Quantité de transfert non valide.");
+      return;
+    }
+
+    // Verify and deduct from Stock General (componentsList)
+    const targetComp = componentsList.find(c => c.sku === directTransferSku);
+    if (!targetComp) {
+      alert("Cet article n'existe pas dans le catalogue du Stock Général d'Optic Alizé.");
+      return;
+    }
+    if (targetComp.stock < val) {
+      alert(`Stock insuffisant dans la base de stockage (Stock Général) : seulement ${targetComp.stock} disponibles.`);
+      return;
+    }
+
+    // Deduct and sync to PostgreSQL Database
+    const updatedComp = {
+      ...targetComp,
+      stock: Math.max(0, targetComp.stock - val)
+    };
+    syncProductToDb(updatedComp);
+
+    // Add to Boutique Stock (Virtually)
+    const updated = boutiqueStocks.map(store => {
+      if (store.id === directTransferDestId) {
+        const existingItem = store.items?.find((item: any) => item.sku === directTransferSku);
+        let updatedItems;
+        if (existingItem) {
+          updatedItems = store.items.map((item: any) => {
+            if (item.sku === directTransferSku) {
+              return { ...item, qty: item.qty + val };
+            }
+            return item;
+          });
+        } else {
+          updatedItems = [
+            ...(store.items || []),
+            {
+              sku: targetComp.sku,
+              name: targetComp.name,
+              spec: targetComp.spec || 'Standard optique calibré',
+              qty: val
+            }
+          ];
+        }
+        return {
+          ...store,
+          items: updatedItems
+        };
+      }
+      return store;
+    });
+
+    const targetStore = boutiqueStocks.find(b => b.id === directTransferDestId);
+    const storeName = targetStore ? targetStore.name : 'la boutique';
+
+    setBoutiqueStocks(updated);
+    
+    // Auto-create a StockVoucher record so it's logged in history
+    const refPrefix = 'TR';
+    const newVch: StockVoucher = {
+      id: `VCH-${Math.floor(100 + Math.random() * 900)}`,
+      type: 'TRANSFERT',
+      reference: `${refPrefix}-2026-${Math.floor(100 + Math.random() * 899)}`,
+      date: new Date().toISOString().split('T')[0],
+      partner: storeName,
+      itemsCount: val,
+      totalValueFCFA: (targetComp.priceFCFA || 0) * val,
+      status: 'Validé',
+      notes: `Transfert direct de stock effectué de la base vers l'agence.`
+    };
+    setVouchersList([newVch, ...vouchersList]);
+
+    setShowDirectTransferModal(false);
+    setDirectTransferQty('');
+
+    // Dynamically generate the PDF Bon d'Envoi
+    generateBonEnvoiPDF(storeName, targetComp, val);
+
+    alert(`Transfert direct réussi :\n-${val} unités déduites de la base de stockage (Stock Général) et transférées vers l'agence : ${storeName}.\n\nLe Bon d'Envoi PDF d'accompagnement physique a été généré automatiquement.`);
   };
 
   const handleRecordBoutiqueSale = (storeId: string, sku: string) => {
@@ -343,16 +723,21 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     }).catch(err => console.error("Failed to fetch customers in GestionOpticModule:", err));
 
     fetchProducts().then(data => {
-      setComponentsList(data.map((p: any) => ({
-        id: p.id,
-        type: p.category as any,
-        name: p.name,
-        brand: p.brand,
-        sku: p.barcode || p.id,
-        stock: 999, // default general stock if not specified
-        priceFCFA: p.price,
-        spec: p.icon || 'Standard optique calibré'
-      })));
+      setComponentsList(
+        (Array.isArray(data) ? data : [])
+          .filter(Boolean)
+          .map((p: any) => ({
+            id: p.id || '',
+            type: (p.category || 'MONTURE') as any,
+            name: p.name || 'Composant sans nom',
+            brand: p.brand || 'G-LAB Premium',
+            sku: p.barcode || p.id || '',
+            stock: p.stock !== undefined ? p.stock : 999, // default general stock if not specified
+            priceFCFA: typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0),
+            spec: p.icon || 'Standard optique calibré'
+          }))
+          .filter((p: any) => p.id)
+      );
     }).catch(err => console.error("Failed to fetch products in GestionOpticModule:", err));
   }, []);
 
@@ -410,6 +795,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
     
     let contentHtml = '';
     const dateStr = new Date().toLocaleDateString('fr-FR');
+    const logoBase64 = localStorage.getItem('optic_app_logo_base64') || defaultLogo;
     
     if (printingItem.type === 'client') {
       contentHtml = `
@@ -617,15 +1003,19 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div>
-                <h2>🔬 ATELIER CENTRAL OPTIC ALIZÉ</h2>
-                <p style="font-size: 11px; font-weight: bold;">Atelier Central • Chaîne d'Alizés</p>
-                <p style="font-size: 10px; color: #6b7280;">Registre : GL-REG-2026-B15 • Service Optométrie & Réfraction</p>
+        <div class="header" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 3px double #0f172a; padding-bottom: 20px; margin-bottom: 30px;">
+            <div style="display: flex; align-items: center;">
+                ${logoBase64 ? `<img src="${logoBase64}" style="max-height: 60px; max-width: 160px; object-fit: contain; margin-right: 20px;" />` : `<span style="font-size: 32px; margin-right: 15px;">👓</span>`}
+                <div>
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a; letter-spacing: 0.05em;">OPTIC ALIZE</h1>
+                    <h2 style="margin: 2px 0; font-size: 11px; font-weight: 800; color: #2563eb; text-transform: uppercase; letter-spacing: 0.05em;">DEPARTEMENT GESTION STOCKS</h2>
+                    <p style="margin: 2px 0 0 0; font-size: 9px; color: #475569; font-weight: 500;">Téléphone: +221 77 124 55 93 | Email: contact@opticalize.com</p>
+                    <p style="margin: 2px 0 0 0; font-size: 9px; color: #475569; font-weight: 500;">Situation : Boulevard du Front de Terre, Dakar, Sénégal</p>
+                </div>
             </div>
             <div style="text-align: right;">
-                <div class="badge">DOCUMENT D'ARCHIVE</div>
-                <p style="font-size: 10px; color: #6b7280; margin-top: 5px;">Généré le : ${dateStr}</p>
+                <div class="badge">DOCUMENT GESTION</div>
+                <p style="font-size: 9px; color: #64748b; margin-top: 5px; font-weight: 600;">Généré le : ${dateStr}</p>
             </div>
         </div>
         
@@ -1087,7 +1477,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
         <div className="text-left space-y-1">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-            <strong className="text-[11px] uppercase tracking-wider text-[#60A5FA]">Accès Multi-Boutiques &amp; Rôles d'Équipe</strong>
+            <strong className="text-[11px] uppercase tracking-wider text-[#60A5FA]">Accès Multi-Agences &amp; Rôles d'Équipe</strong>
           </div>
           <p className="text-[10px] text-slate-350 leading-relaxed font-semibold">
             {currentLanguage === 'FR' 
@@ -1184,7 +1574,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
             }`}
           >
             <Truck className="w-4 h-4 text-cyan-400" />
-            <span>🏬 Réappro &amp; Transferts Multi-Boutiques</span>
+            <span>🏬 Réappro &amp; Transfert Multi Agence</span>
           </button>
         </div>
 
@@ -1253,7 +1643,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
               onClick={() => setActiveTab('TRANSFERT_BOUTIQUE')}
               className={`px-3 py-1.5 rounded-md transition ${activeTab === 'TRANSFERT_BOUTIQUE' ? 'bg-indigo-50 text-indigo-700 font-black border border-indigo-205' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
             >
-              🔁 Transfert Boutique
+              🔁 Transfert Agence
             </button>
             <button 
               onClick={() => setActiveTab('BON_RETOUR')}
@@ -1528,24 +1918,43 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
             <div className="overflow-x-auto text-xs">
             <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2 font-mono">
               <span className="text-[11px] font-black uppercase text-slate-700">
-                🗂️ Workflow de Stock : {activeTab.replace('_', ' ')}
+                🗂️ Workflow de Stock : {activeTab === 'TRANSFERT_BOUTIQUE' ? 'TRANSFERT AGENCE' : activeTab.replace('_', ' ')}
               </span>
-              <button 
-                onClick={() => {
-                  // Auto infer type
-                  const linkType: Record<string, 'ENTREE' | 'SORTIE' | 'COMMANDE' | 'DISTRIBUTION' | 'TRANSFERT' | 'RETOUR'> = {
-                    BON_COMMANDE: 'COMMANDE',
-                    DISTRIBUTION: 'DISTRIBUTION',
-                    TRANSFERT_BOUTIQUE: 'TRANSFERT',
-                    BON_RETOUR: 'RETOUR'
-                  };
-                  setVType(linkType[activeTab] || 'COMMANDE');
-                  setShowAddModal('VOUCHER');
-                }}
-                className="px-3 py-1 bg-indigo-650 hover:bg-indigo-750 text-white font-black text-[10px] rounded transition shadow-2xs"
-              >
-                + Ajouter Bon {activeTab.replace('_', ' ')}
-              </button>
+              <div className="flex items-center gap-2">
+                {activeTab === 'TRANSFERT_BOUTIQUE' && (
+                  <button 
+                    onClick={() => {
+                      if (componentsList && componentsList.length > 0) {
+                        setDirectTransferSku(componentsList[0].sku);
+                      }
+                      if (boutiqueStocks && boutiqueStocks.length > 0) {
+                        setDirectTransferDestId(boutiqueStocks[0].id);
+                      }
+                      setShowDirectTransferModal(true);
+                    }}
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] rounded transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-100 animate-pulse" />
+                    <span>+ Transfert Direct vers Agence (PDF Auto)</span>
+                  </button>
+                )}
+                <button 
+                  onClick={() => {
+                    // Auto infer type
+                    const linkType: Record<string, 'ENTREE' | 'SORTIE' | 'COMMANDE' | 'DISTRIBUTION' | 'TRANSFERT' | 'RETOUR'> = {
+                      BON_COMMANDE: 'COMMANDE',
+                      DISTRIBUTION: 'DISTRIBUTION',
+                      TRANSFERT_BOUTIQUE: 'TRANSFERT',
+                      BON_RETOUR: 'RETOUR'
+                    };
+                    setVType(linkType[activeTab] || 'COMMANDE');
+                    setShowAddModal('VOUCHER');
+                  }}
+                  className="px-3 py-1 bg-indigo-650 hover:bg-indigo-750 text-white font-black text-[10px] rounded transition shadow-2xs"
+                >
+                  + Ajouter Bon {activeTab === 'TRANSFERT_BOUTIQUE' ? 'TRANSFERT AGENCE' : activeTab.replace('_', ' ')}
+                </button>
+              </div>
             </div>
 
             {/* If tab is not LOGISTICS or GENERAL INVENTORY, display vouchers list */}
@@ -1859,7 +2268,10 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                         type="button"
                         onClick={() => {
                           setSelectedSupplyStoreId(store.id);
-                          setSupplySku(store.items[0].sku);
+                          const defaultSku = (store.items && store.items.length > 0) 
+                            ? store.items[0].sku 
+                            : ((componentsList && componentsList.length > 0) ? componentsList[0].sku : 'RB2140-50');
+                          setSupplySku(defaultSku);
                           setShowSupplyModal(true);
                         }}
                         className="w-full py-2 bg-gradient-to-r from-[#2563EB] to-[#2563EB]/85 hover:opacity-95 text-white font-extrabold text-[10px] rounded-xl transition uppercase tracking-wider cursor-pointer shadow-sm"
@@ -1963,7 +2375,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-right font-black font-mono text-slate-850">
-                        {c.priceFCFA.toLocaleString()} FCFA
+                        {(c.priceFCFA || 0).toLocaleString()} FCFA
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -2121,8 +2533,8 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Nombre de pièces</label>
                         <input 
                           type="number" 
-                          value={vItems}
-                          onChange={(e) => setVItems(parseInt(e.target.value))}
+                          value={vItems || ''}
+                          onChange={(e) => setVItems(parseInt(e.target.value) || 0)}
                           placeholder="Ex: 10" 
                           className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold"
                         />
@@ -2131,8 +2543,8 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Frais / Valeur FCFA</label>
                         <input 
                           type="number" 
-                          value={vValue}
-                          onChange={(e) => setVValue(parseFloat(e.target.value))}
+                          value={vValue || ''}
+                          onChange={(e) => setVValue(parseFloat(e.target.value) || 0)}
                           placeholder="Ex: 500000" 
                           className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold"
                         />
@@ -2219,8 +2631,8 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Stock disponible</label>
                         <input 
                           type="number" 
-                          value={compStock}
-                          onChange={(e) => setCompStock(parseInt(e.target.value))}
+                          value={compStock || ''}
+                          onChange={(e) => setCompStock(parseInt(e.target.value) || 0)}
                           placeholder="Ex: 24" 
                           className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold"
                         />
@@ -2229,8 +2641,8 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Tarif unitaire FCFA</label>
                         <input 
                           type="number" 
-                          value={compPrice}
-                          onChange={(e) => setCompPrice(parseFloat(e.target.value))}
+                          value={compPrice || ''}
+                          onChange={(e) => setCompPrice(parseFloat(e.target.value) || 0)}
                           placeholder="Ex: 85000" 
                           className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold"
                         />
@@ -2618,7 +3030,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                       className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer font-bold border-indigo-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                     >
                       {localBranches.length === 0 ? (
-                        <option value="Paris Nation">Paris Nation (Agence Alpha)</option>
+                        <option value="Direction">Direction</option>
                       ) : (
                         localBranches.map((b) => (
                           <option key={b.id} value={b.city || b.name}>
@@ -2788,7 +3200,7 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                       </div>
                       <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
                         <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Tarification unitaire</span>
-                        <strong className="text-emerald-600 text-xs">{printingItem.data.priceFCFA.toLocaleString()} FCFA</strong>
+                        <strong className="text-emerald-600 text-xs">{(printingItem.data.priceFCFA || 0).toLocaleString()} FCFA</strong>
                       </div>
                     </div>
 
@@ -2846,6 +3258,93 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
         )}
       </AnimatePresence>
 
+      {/* --- MODAL TRANSFERT DIRECT VERS AGENCE (PDF AUTO) --- */}
+      {showDirectTransferModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4 text-xs text-[#1F2937] text-left relative">
+            <button 
+              type="button"
+              onClick={() => setShowDirectTransferModal(false)}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div>
+              <div className="flex items-center gap-2 text-emerald-600">
+                <ArrowLeftRight className="w-5 h-5 text-emerald-500 animate-pulse" />
+                <h3 className="font-display font-black text-sm uppercase tracking-wider">Transfert Direct vers Agence</h3>
+              </div>
+              <p className="text-slate-500 text-[10px] mt-1 leading-relaxed">
+                Débitez immédiatement la base de stockage (Stock Général) pour approvisionner une de vos agences. Un Bon d'Envoi PDF d'accompagnement physique sera généré automatiquement.
+              </p>
+            </div>
+
+            <form onSubmit={handleDirectTransferToAgency} className="space-y-4">
+              <div className="space-y-1">
+                <label className="font-bold block text-slate-600 text-[10px] uppercase">Agence de destination</label>
+                <select 
+                  value={directTransferDestId} 
+                  onChange={e => setDirectTransferDestId(e.target.value)}
+                  className="w-full p-2.5 rounded-lg border border-slate-200 outline-none bg-slate-50 font-bold text-slate-800 cursor-pointer"
+                >
+                  {boutiqueStocks.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold block text-slate-600 text-[10px] uppercase">Composant / Article à transférer</label>
+                <select 
+                  value={directTransferSku} 
+                  onChange={e => setDirectTransferSku(e.target.value)}
+                  className="w-full p-2.5 rounded-lg border border-slate-200 outline-none bg-slate-50 font-semibold text-xs text-slate-800 cursor-pointer"
+                >
+                  {componentsList.length > 0 ? (
+                    componentsList.map(c => (
+                      <option key={c.id} value={c.sku}>
+                        {c.name} ({c.sku}) — Stock Central: {c.stock} u.
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Aucun composant disponible dans le Stock Général</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold block text-slate-600 text-[10px] uppercase">Quantité physique à transférer</label>
+                <input 
+                  type="number" 
+                  value={directTransferQty}
+                  onChange={e => setDirectTransferQty(e.target.value)}
+                  placeholder="Ex: 15" 
+                  className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:border-emerald-650 font-sans font-bold" 
+                  required 
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowDirectTransferModal(false)}
+                  className="px-4 py-2 bg-slate-100 border text-slate-700 rounded-lg hover:bg-slate-200 font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 cursor-pointer shadow-sm transition"
+                >
+                  Confirmer le Transfert Direct
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* --- STOCK RE-STOCK/RESTOCK MODAL SANS LISTE DEROULANTE --- */}
       {showSupplyModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -2870,11 +3369,21 @@ export default function GestionOpticModule({ currentLanguage = 'FR' }: GestionOp
                 <select 
                   value={supplySku} 
                   onChange={e => setSupplySku(e.target.value)}
-                  className="w-full p-2.5 rounded-lg border outline-none bg-slate-50 font-semibold"
+                  className="w-full p-2.5 rounded-lg border outline-none bg-slate-50 font-semibold text-xs text-slate-800"
                 >
-                  <option value="RB2140-50">Ray-Ban Wayfarer Classic (RB2140-50)</option>
-                  <option value="VX-PHY-167">Varilux Physio Eye-protect (VX-PHY-167)</option>
-                  <option value="TRT-GENS-GY">Transitions Gen S Photochromic (TRT-GENS-GY)</option>
+                  {componentsList.length > 0 ? (
+                    componentsList.map(c => (
+                      <option key={c.id} value={c.sku}>
+                        {c.name} ({c.sku}) — Stock Central: {c.stock} u.
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="RB2140-50">Ray-Ban Wayfarer Classic (RB2140-50)</option>
+                      <option value="VX-PHY-167">Varilux Physio Eye-protect (VX-PHY-167)</option>
+                      <option value="TRT-GENS-GY">Transitions Gen S Photochromic (TRT-GENS-GY)</option>
+                    </>
+                  )}
                 </select>
               </div>
 

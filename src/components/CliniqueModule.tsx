@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { jsPDF } from 'jspdf';
 import { 
   Calendar, Eye, Plus, CheckCircle, Clock, Heart, 
@@ -26,15 +27,48 @@ interface CliniqueModuleProps {
 }
 
 const RECENT_CLIENTS = [
-  { id: 'c1-7501', name: 'Hélène Dubois-Chambery' },
-  { id: 'c2-6902', name: 'Jean-Pierre Gomez-Viguier' },
-  { id: 'c3-1303', name: 'Sarah El-Amri' },
-  { id: 'c4-8402', name: 'Mamadi Diarra' },
-  { id: 'c5-9204', name: 'Awa Niang' }
+  { id: 'c1-7501', name: 'Sophie Martin' },
+  { id: 'c2-6902', name: 'Alassane Koné' },
+  { id: 'c3-1303', name: 'Marie Dupont' },
+  { id: 'c4-8402', name: 'Koffi Mensah' },
+  { id: 'c5-9204', name: 'Fatimata Diallo' }
 ];
 
 export default function CliniqueModule({ currentLanguage, currentCompany, isOffline }: CliniqueModuleProps) {
   const [activeSubTab, setActiveSubTab] = useState<'appointments' | 'sightExams' | 'mesPrescriptions' | 'patients'>('sightExams');
+
+  // Load CRM customer registry and synchronize dynamically
+  const [crmCustomers, setCrmCustomers] = React.useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('optic_crm_customers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  React.useEffect(() => {
+    const handleSyncCrm = () => {
+      try {
+        const saved = localStorage.getItem('optic_crm_customers');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setCrmCustomers(parsed);
+          }
+        }
+      } catch (e) {}
+    };
+    handleSyncCrm();
+    window.addEventListener('storage', handleSyncCrm);
+    const interval = setInterval(handleSyncCrm, 2000);
+    return () => {
+      window.removeEventListener('storage', handleSyncCrm);
+      clearInterval(interval);
+    };
+  }, []);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   const [selectedPrescriptionForView, setSelectedPrescriptionForView] = useState<any | null>(null);
@@ -114,6 +148,14 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
   const boutiqueName = localStorage.getItem('optic_boutique_name') || 'Optic Alizé - DIRECTION';
   const currentUserEmail = localStorage.getItem('optic_user_email') || 'glabtech1@gmail.com';
 
+  const filteredCrmPatients = crmCustomers.filter((c: any) => {
+    if (!c.branch) return true;
+    return c.branch.toLowerCase().trim() === boutiqueName.toLowerCase().trim() ||
+           boutiqueName.toLowerCase().trim().includes(c.branch.toLowerCase().trim()) ||
+           c.branch.toLowerCase().trim().includes(boutiqueName.toLowerCase().trim());
+  });
+  const agencyPatients = filteredCrmPatients.length > 0 ? filteredCrmPatients : crmCustomers;
+
   // Helper PDFs
   const downloadPrescriptionPDF = (pres: any) => {
     const doc = new jsPDF();
@@ -166,6 +208,7 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
     doc.text(`Identifiant Patient : ${pres.id || 'N/A'}`, 15, 59);
     doc.text(`Date de Consultation : ${pres.date || formattedDate}`, 15, 65);
     doc.text(`Boutique Émettrice : ${boutiqueName}`, 15, 71);
+    doc.text(isFR ? `Médecin Prescripteur : ${pres.ophthalmologist || 'N/A'}` : `Prescribing Doctor: ${pres.ophthalmologist || 'N/A'}`, 110, 59);
     
     doc.setDrawColor(0, 151, 167); // Teal lines
     doc.setLineWidth(0.5);
@@ -445,8 +488,12 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
 
   React.useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadData, 1500);
+    window.addEventListener('storage', loadData);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', loadData);
+    };
   }, [loadData]);
 
   const handleExportPrescriptionsToExcel = () => {
@@ -622,6 +669,7 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
       id: presId,
       patientName: examPatient,
       date: dateStr,
+      ophthalmologist: redigePar,
       odSphere: parseFloat(odSphere),
       odCylinder: parseFloat(odCylinder),
       odAxis: parseInt(odAxis),
@@ -645,6 +693,22 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
       return customerFullName === targetName || customerFullName.includes(targetName) || targetName.includes(customerFullName);
     });
 
+    const newCrmPres = {
+      id: `PRES-${Math.floor(1000 + Math.random() * 9000)}`,
+      ophthalmologist: redigePar,
+      odSphere: parseFloat(odSphere) || 0,
+      odCylinder: parseFloat(odCylinder) || 0,
+      odAxis: parseInt(odAxis) || 90,
+      odAddition: parseFloat(odAddition) || 2.0,
+      ogSphere: parseFloat(ogSphere) || 0,
+      ogCylinder: parseFloat(ogCylinder) || 0,
+      ogAxis: parseInt(ogAxis) || 90,
+      ogAddition: parseFloat(ogAddition) || 2.0,
+      prescriptionDate: dateStr,
+      isExpired: false,
+      insuranceValidated: true
+    };
+
     if (match) {
       let prescriptions: any[] = [];
       try {
@@ -652,26 +716,26 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
       } catch (e) {
         prescriptions = [];
       }
-      const newCrmPres = {
-        id: `PRES-${Math.floor(1000 + Math.random() * 9000)}`,
-        ophthalmologist: redigePar,
-        odSphere: parseFloat(odSphere),
-        odCylinder: parseFloat(odCylinder),
-        odAxis: parseInt(odAxis),
-        odAddition: parseFloat(odAddition),
-        ogSphere: parseFloat(ogSphere),
-        ogCylinder: parseFloat(ogCylinder),
-        ogAxis: parseInt(ogAxis),
-        ogAddition: parseFloat(ogAddition),
-        prescriptionDate: dateStr,
-        isExpired: false,
-        insuranceValidated: true
-      };
       const updatedCustomer = {
         ...match,
         prescriptionsJson: JSON.stringify([newCrmPres, ...prescriptions])
       };
       p3 = saveCustomer(updatedCustomer);
+    } else {
+      const names = examPatient.trim().split(' ');
+      const firstName = names[0] || 'Patient';
+      const lastName = names.slice(1).join(' ') || '';
+      const newCustomer = {
+        id: `CLT-${Math.floor(100000 + Math.random() * 900000)}`,
+        firstName: firstName,
+        lastName: lastName,
+        phone: '',
+        address: 'Enregistré via Clinique',
+        branch: localStorage.getItem('optic_boutique_name') || 'Dakar DIRECTION',
+        prescriptionsJson: JSON.stringify([newCrmPres]),
+        created_at: new Date().toISOString()
+      };
+      p3 = saveCustomer(newCustomer);
     }
 
     Promise.all([p1, p2, p3]).then(() => {
@@ -774,7 +838,7 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">
                   {currentLanguage === 'FR' ? 'Formulaire de Réfraction Clinique' : 'Clinical Visual Exam Form'}
                 </h3>
-                <p className="text-[10px] text-slate-400 font-mono">ENREGISTREMENT OFFICIEL • G-LAB OPTIC TOGO</p>
+                <p className="text-[10px] text-slate-400 font-mono">ENREGISTREMENT OFFICIEL • OPTIC ALIZÉ</p>
               </div>
             </div>
 
@@ -965,11 +1029,14 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
                   required
                 >
                   <option value="">{currentLanguage === 'FR' ? '-- Choisir un patient CRM --' : '-- Choose a CRM Patient --'}</option>
-                  {RECENT_CLIENTS.map(cl => (
-                    <option key={cl.id} value={cl.name}>
-                      {cl.name} ({cl.id})
-                    </option>
-                  ))}
+                  {agencyPatients.map(cl => {
+                    const fullName = `${cl.firstName || ''} ${cl.lastName || ''}`.trim() || 'Client Sans Nom';
+                    return (
+                      <option key={cl.id} value={fullName}>
+                        {fullName} ({cl.id} • {cl.phone || 'Pas de numéro'})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1247,15 +1314,23 @@ export default function CliniqueModule({ currentLanguage, currentCompany, isOffl
             {/* Modal fields details */}
             <div className="p-6 space-y-5 text-slate-700 text-xs overflow-y-auto max-h-[70vh]">
               {/* Store metadata branding */}
-              <div className="p-3.5 bg-slate-50 border border-slate-150 rounded-2xl flex items-center justify-between">
-                <div>
-                  <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">Boutique d'Émission</span>
-                  <span className="text-slate-800 font-extrabold font-mono text-xs">{boutiqueName}</span>
+              <div className="p-3.5 bg-slate-50 border border-slate-150 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">Boutique d'Émission</span>
+                    <span className="text-slate-800 font-extrabold font-mono text-xs">{boutiqueName}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] text-slate-400 uppercase font-black block">Opérateur de Pointage</span>
+                    <span className="text-slate-650 font-bold">{currentUserEmail}</span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-[9px] text-slate-400 uppercase font-black block">Opérateur de Pointage</span>
-                  <span className="text-slate-650 font-bold">{currentUserEmail}</span>
-                </div>
+                {selectedPrescriptionForView.ophthalmologist && (
+                  <div className="border-t pt-2 mt-2 flex justify-between items-center">
+                    <span className="text-[9px] text-slate-400 uppercase font-black">Médecin Prescripteur :</span>
+                    <span className="text-rose-700 font-extrabold text-xs">Dr. {selectedPrescriptionForView.ophthalmologist}</span>
+                  </div>
+                )}
               </div>
 
               {/* Réfractions */}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { jsPDF } from 'jspdf';
 import { 
   BookOpen, Calendar as CalendarIcon, Download, CheckCircle, 
