@@ -3,6 +3,7 @@ import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, UserPlus, Shield, Mail, Phone, MapPin, Edit2, Trash2, Check, X, Filter, Lock, Eye, EyeOff } from 'lucide-react';
 import { fetchUsers, saveUser, deleteUser as apiDeleteUser } from '../lib/api';
+import { SkeletonLoader } from './SkeletonLoader';
 
 interface User {
   id: string;
@@ -614,26 +615,7 @@ export default function SaaSUsers({
       </div>
 
       {isUsersLoading ? (
-        /* --- BEAUTIFUL LAZY LOADING SKELETON SCREEN --- */
-        <div className="space-y-3.5 p-6 bg-white dark:bg-slate-900/40 rounded-2xl border border-slate-150 dark:border-slate-800 shadow-xs">
-          <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded-lg w-1/4 animate-pulse" />
-          <div className="space-y-2">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center justify-between py-4 border-b border-slate-100 dark:border-slate-800/60 last:border-0 animate-pulse">
-                <div className="flex items-center gap-3 w-1/3">
-                  <div className="w-9 h-9 rounded-xl bg-slate-150 dark:bg-slate-800" />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-3/4" />
-                    <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded w-1/2" />
-                  </div>
-                </div>
-                <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-1/6" />
-                <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-1/6" />
-                <div className="h-3 bg-slate-150 dark:bg-slate-800 rounded w-1/12" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <SkeletonLoader type="table" columns={5} rows={6} className="p-6 bg-white dark:bg-slate-900/40 rounded-2xl border border-slate-150 dark:border-slate-800 shadow-xs" />
       ) : (
         /* --- USER TABLE CARD CONTAINER --- */
         <div className={`overflow-hidden rounded-2xl border ${darkMode ? 'bg-slate-900/40 border-slate-800 shadow-xl' : 'bg-white shadow-xs border-slate-150'}`}>

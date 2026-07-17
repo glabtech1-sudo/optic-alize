@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, Package, Plus, Sparkles, Filter, Grid, List, AlertTriangle } from 'lucide-react';
 import { ComponentItem } from './GestionOpticModule';
 import { fetchProducts } from '../lib/api';
+import { SkeletonLoader } from './SkeletonLoader';
 
 interface SaaSProductsProps {
   darkMode?: boolean;
@@ -163,55 +164,59 @@ export default function SaaSProducts({ darkMode = false, currentLanguage = 'FR' 
       </div>
 
       {/* Product Grid Layout */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-        {filteredProducts.map((p) => {
-          const status = getProductStatus(p);
-          return (
-            <div 
-              key={p.id} 
-              className={`rounded-xl overflow-hidden border border-slate-200/80 transition duration-150 flex flex-col justify-between ${darkMode ? 'bg-[#0F172A]/40 border border-slate-800 shadow-sm' : 'bg-white shadow-3xs hover:shadow-md'}`}
-            >
-              <div className={`p-6 flex items-center justify-center text-4xl select-none ${darkMode ? 'bg-slate-900/30' : 'bg-slate-50/50 border-b border-slate-100'}`}>
-                {getEmojiIcon(p.type)}
-              </div>
-              <div className="p-4 space-y-2 flex-grow flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-mono text-[#64748B] dark:text-slate-400 uppercase tracking-widest font-bold">{p.brand}</span>
-                    <span className="text-[10px] font-mono font-bold text-[#2563EB]">{p.sku}</span>
-                  </div>
-                  <h3 className="font-extrabold text-xs text-[#0F172A] dark:text-white line-clamp-1 mt-0.5" title={p.name}>
-                    {p.name}
-                  </h3>
-                  <p className="text-[10px] text-[#64748B] dark:text-slate-400 mt-0.5 font-bold uppercase">{getFriendlyType(p.type)}</p>
-                  {p.spec && (
-                    <p className="text-[10px] text-slate-400 italic mt-0.5 font-medium line-clamp-2">Specs: {p.spec}</p>
-                  )}
+      {isLoading ? (
+        <SkeletonLoader type="grid" rows={8} />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
+          {filteredProducts.map((p) => {
+            const status = getProductStatus(p);
+            return (
+              <div 
+                key={p.id} 
+                className={`rounded-xl overflow-hidden border border-slate-200/80 transition duration-150 flex flex-col justify-between ${darkMode ? 'bg-[#0F172A]/40 border border-slate-800 shadow-sm' : 'bg-white shadow-3xs hover:shadow-md'}`}
+              >
+                <div className={`p-6 flex items-center justify-center text-4xl select-none ${darkMode ? 'bg-slate-900/30' : 'bg-slate-50/50 border-b border-slate-100'}`}>
+                  {getEmojiIcon(p.type)}
                 </div>
+                <div className="p-4 space-y-2 flex-grow flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-[10px] font-mono text-[#64748B] dark:text-slate-400 uppercase tracking-widest font-bold">{p.brand}</span>
+                      <span className="text-[10px] font-mono font-bold text-[#2563EB]">{p.sku}</span>
+                    </div>
+                    <h3 className="font-extrabold text-xs text-[#0F172A] dark:text-white line-clamp-1 mt-0.5" title={p.name}>
+                      {p.name}
+                    </h3>
+                    <p className="text-[10px] text-[#64748B] dark:text-slate-400 mt-0.5 font-bold uppercase">{getFriendlyType(p.type)}</p>
+                    {p.spec && (
+                      <p className="text-[10px] text-slate-400 italic mt-0.5 font-medium line-clamp-2">Specs: {p.spec}</p>
+                    )}
+                  </div>
 
-                <div className={`pt-2 space-y-1.5 border-t border-slate-100`}>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500 font-semibold">{currentLanguage === 'FR' ? "Prix de vente :" : "Selling Price :"}</span>
-                    <span className="text-xs font-black text-[#0F172A] dark:text-white font-mono">{(p.priceFCFA || 0).toLocaleString()} FCFA</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-1">
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-black ${getStockBadge(status)}`}>
-                      {status === 'In Stock' 
-                        ? (currentLanguage === 'FR' ? 'Disponible' : 'Available') 
-                        : status === 'Low Stock' 
-                          ? (currentLanguage === 'FR' ? 'Alerte' : 'Low Stock') 
-                          : (currentLanguage === 'FR' ? 'Rupture' : 'Refill required')}
-                    </span>
-                    <span className="text-xs font-mono font-black text-[#64748B] dark:text-slate-400">
-                      Stock: {p.stock === 999 ? '∞' : `${p.stock} p`}
-                    </span>
+                  <div className={`pt-2 space-y-1.5 border-t border-slate-100`}>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-500 font-semibold">{currentLanguage === 'FR' ? "Prix de vente :" : "Selling Price :"}</span>
+                      <span className="text-xs font-black text-[#0F172A] dark:text-white font-mono">{(p.priceFCFA || 0).toLocaleString()} FCFA</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-black ${getStockBadge(status)}`}>
+                        {status === 'In Stock' 
+                          ? (currentLanguage === 'FR' ? 'Disponible' : 'Available') 
+                          : status === 'Low Stock' 
+                            ? (currentLanguage === 'FR' ? 'Alerte' : 'Low Stock') 
+                            : (currentLanguage === 'FR' ? 'Rupture' : 'Refill required')}
+                      </span>
+                      <span className="text-xs font-mono font-black text-[#64748B] dark:text-slate-400">
+                        Stock: {p.stock === 999 ? '∞' : `${p.stock} p`}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

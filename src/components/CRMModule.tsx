@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { safeLocalStorage as localStorage } from '../lib/supabaseSync';
 import { fetchCustomers, saveCustomer } from '../lib/api';
 import { defaultLogoBase64 as defaultLogo } from '../assets/logoBase64';
+import { SkeletonLoader } from './SkeletonLoader';
 import { 
   User, Search, FileText, Download, Check, Sparkles, Shield, Calendar, Plus, 
   Filter, Ban, Table, CreditCard, HeartPulse, ShieldAlert, Award, ArrowUpRight, 
@@ -1113,9 +1114,12 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
           </div>
 
           {/* Patient list table representation */}
-          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left font-sans text-xs">
+          {isLoading ? (
+            <SkeletonLoader type="table" columns={7} rows={6} />
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left font-sans text-xs">
                 <thead>
                   <tr className="bg-slate-50/70 border-b border-slate-100">
                     <th className="p-4 text-slate-600 font-semibold font-mono text-[10px] uppercase">Patient</th>
@@ -1219,6 +1223,7 @@ export default function CRMModule({ currentLanguage = 'FR' }: CRMModuleProps) {
               </table>
             </div>
           </div>
+          )}
 
         </div>
       )}

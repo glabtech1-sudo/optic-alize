@@ -407,27 +407,33 @@ export default function HRModule({
   // RELATIONAL SUPABASE SYNC HOOKS & DATABASE LOADER
   const [isLoadingDb, setIsLoadingDb] = useState(false);
 
+  // Keep a ref to the latest state to avoid stale closure references in loadDataFromDb
+  const stateRef = React.useRef({ employees, attendance, leaves, adjustments, payslips });
+  React.useEffect(() => {
+    stateRef.current = { employees, attendance, leaves, adjustments, payslips };
+  }, [employees, attendance, leaves, adjustments, payslips]);
+
   const loadDataFromDb = async () => {
     setIsLoadingDb(true);
     try {
       const dbEmps = await fetchHREmployees();
-      if (dbEmps && dbEmps.length > 0) {
+      if (dbEmps && dbEmps.length > 0 && JSON.stringify(stateRef.current.employees) !== JSON.stringify(dbEmps)) {
         setEmployees(dbEmps);
       }
       const dbAtt = await fetchAttendanceLedger();
-      if (dbAtt && dbAtt.length > 0) {
+      if (dbAtt && dbAtt.length > 0 && JSON.stringify(stateRef.current.attendance) !== JSON.stringify(dbAtt)) {
         setAttendance(dbAtt);
       }
       const dbLeaves = await fetchLeaveRequests();
-      if (dbLeaves && dbLeaves.length > 0) {
+      if (dbLeaves && dbLeaves.length > 0 && JSON.stringify(stateRef.current.leaves) !== JSON.stringify(dbLeaves)) {
         setLeaves(dbLeaves);
       }
       const dbAdj = await fetchAdjustments();
-      if (dbAdj && dbAdj.length > 0) {
+      if (dbAdj && dbAdj.length > 0 && JSON.stringify(stateRef.current.adjustments) !== JSON.stringify(dbAdj)) {
         setAdjustments(dbAdj);
       }
       const dbPays = await fetchPayslips();
-      if (dbPays && dbPays.length > 0) {
+      if (dbPays && dbPays.length > 0 && JSON.stringify(stateRef.current.payslips) !== JSON.stringify(dbPays)) {
         setPayslips(dbPays);
       }
     } catch (e) {
@@ -439,7 +445,7 @@ export default function HRModule({
 
   React.useEffect(() => {
     loadDataFromDb();
-    const interval = setInterval(loadDataFromDb, 2000);
+    const interval = setInterval(loadDataFromDb, 4000); // Relax sync interval to 4 seconds to reduce CPU and network overhead
     window.addEventListener('storage', loadDataFromDb);
     return () => {
       clearInterval(interval);
@@ -447,46 +453,8 @@ export default function HRModule({
     };
   }, []);
 
-  // Auto-sync updates to Supabase
-  React.useEffect(() => {
-    if (employees && employees.length > 0) {
-      employees.forEach(emp => {
-        saveHREmployee(emp).catch(err => console.warn('[SYNC] Error syncing employee:', err));
-      });
-    }
-  }, [employees]);
-
-  React.useEffect(() => {
-    if (attendance && attendance.length > 0) {
-      attendance.forEach(entry => {
-        saveAttendanceEntry(entry).catch(err => console.warn('[SYNC] Error syncing attendance:', err));
-      });
-    }
-  }, [attendance]);
-
-  React.useEffect(() => {
-    if (leaves && leaves.length > 0) {
-      leaves.forEach(req => {
-        saveLeaveRequest(req).catch(err => console.warn('[SYNC] Error syncing leave request:', err));
-      });
-    }
-  }, [leaves]);
-
-  React.useEffect(() => {
-    if (adjustments && adjustments.length > 0) {
-      adjustments.forEach(adj => {
-        saveAdjustment(adj).catch(err => console.warn('[SYNC] Error syncing adjustment:', err));
-      });
-    }
-  }, [adjustments]);
-
-  React.useEffect(() => {
-    if (payslips && payslips.length > 0) {
-      payslips.forEach(pay => {
-        savePayslip(pay).catch(err => console.warn('[SYNC] Error syncing payslip:', err));
-      });
-    }
-  }, [payslips]);
+  // Removed redundant item-by-item loops that were causing a database write-storm.
+  // Full synchronization is handled in bulk through syncCollectionToSupabase effects on state changes.
 
   // If payslips are empty but we have employees, let's pre-populate standard slips
   useEffect(() => {

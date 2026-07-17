@@ -1,4 +1,7 @@
-import { supabaseClient, unpackData, missingTables, updateSyncState, globalMemoryStore, syncCollectionToSupabase, safeLocalStorage } from './supabaseSync';
+import { unpackData, missingTables, updateSyncState, globalMemoryStore, syncCollectionToSupabase, safeLocalStorage } from './supabaseSync';
+import { SupabaseService } from '../services/SupabaseService';
+
+const supabaseClient = SupabaseService.client;
 import {
   mapEmployeeToSupabase,
   mapAttendanceToSupabase,
@@ -105,66 +108,24 @@ async function apiFetch<T>(url: string, fallbackKey: string, defaultVal: T): Pro
   const localVal = globalMemoryStore[fallbackKey] || null;
   const parsedLocal = localVal ? JSON.parse(localVal) : null;
 
-  if (!supabaseClient) {
+  if (!SupabaseService.isConfigured()) {
     return (parsedLocal !== null ? parsedLocal : defaultVal) as T;
   }
-
-  const tableName = getTableNameForKey(fallbackKey);
-  const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
 
   updateSyncState({ status: 'loading' });
 
   try {
-    if (tableName && !missingTables[tableName]) {
-      try {
-        const { data, error } = await supabaseClient
-          .from(tableName)
-          .select('data')
-          .eq('boutique_name', boutiqueName);
-
-        if (!error && data) {
-          const items = data.map(row => unpackData(row.data));
-          updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
-          return items as unknown as T;
-        } else if (error) {
-          if (error.code === '42P01' || error.message?.includes('does not exist')) {
-            missingTables[tableName] = true;
-          }
-        }
-      } catch (tableErr) {
-        missingTables[tableName] = true;
-      }
+    const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
+    const items = await SupabaseService.loadCollection(fallbackKey, boutiqueName);
+    if (items) {
+      updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
+      globalMemoryStore[fallbackKey] = JSON.stringify(items);
+      return items as unknown as T;
     }
-
-    try {
-      let { data, error } = await supabaseClient
-        .from('opticalize_sync')
-        .select('data')
-        .eq('collection_name', fallbackKey)
-        .eq('boutique_name', boutiqueName)
-        .maybeSingle();
-      
-      if (error && error.code !== '42P01' && !error.message?.includes('does not exist')) {
-        const retryResult = await supabaseClient
-          .from('opticalize_sync')
-          .select('data')
-          .eq('collection_name', fallbackKey)
-          .maybeSingle();
-        data = retryResult.data;
-        error = retryResult.error;
-      }
-      
-      if (!error && data && data.data) {
-        updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
-        return unpackData(data.data) as T;
-      }
-    } catch (fallbackErr) {}
-  } catch (err: any) {
+  } catch (err) {
     console.error(`[SUPABASE FETCH] Exception loading ${fallbackKey}:`, err);
-    updateSyncState({ status: 'error', error: `Erreur de chargement pour ${fallbackKey}: ${err.message || err}` });
   }
 
-  updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
   return (parsedLocal !== null ? parsedLocal : defaultVal) as T;
 }
 
@@ -201,142 +162,16 @@ async function apiPost<T>(url: string, body: any, fallbackKey: string): Promise<
   globalMemoryStore[fallbackKey] = JSON.stringify(localList);
   window.dispatchEvent(new Event('storage'));
 
-  if (!supabaseClient) {
+  if (!SupabaseService.isConfigured()) {
     return body as T;
   }
-
-  const tableName = getTableNameForKey(fallbackKey);
-  const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
 
   updateSyncState({ status: 'saving' });
 
   try {
-    let syncSuccess = false;
-
-    // Try dedicated table first
-    if (tableName && !missingTables[tableName]) {
-      try {
-        const items = Array.isArray(body) ? body : [body];
-        let hasError = false;
-
-        for (const item of items) {
-          if (!item || typeof item !== 'object') continue;
-          const itemId = item.id || item.email || `gen-${Math.floor(Math.random() * 1000000)}`;
-          
-          // Apply schema mappers based on the fallbackKey / module
-          let mappedItem = item;
-          if (fallbackKey === 'optic_crm_customers') {
-            const mapped = mapCustomerToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_fused_catalog') {
-            const mapped = mapProductToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_saas_orders') {
-            const mapped = mapOrderToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_audit_logs') {
-            const mapped = mapAuditLogToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_my_clinic_appointments') {
-            const mapped = mapAppointmentToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_my_clinic_exams') {
-            const mapped = mapSightExamToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_my_prescriptions') {
-            const mapped = mapPrescriptionToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_hq_companies') {
-            const mapped = mapCompanyToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          } else if (fallbackKey === 'optic_hq_branches') {
-            const mapped = mapBranchToSupabase(item, boutiqueName);
-            mappedItem = mapped?.data?.value || item;
-          }
-
-          const payload = {
-            id: String(itemId),
-            boutique_name: boutiqueName,
-            data: { value: mappedItem },
-            updated_at: new Date().toISOString()
-          };
-
-          const { error: upsertErr } = await supabaseClient
-            .from(tableName)
-            .upsert(payload, { onConflict: 'id' });
-
-          if (upsertErr) {
-            if (upsertErr.code === '42P01' || upsertErr.message?.includes('does not exist')) {
-              missingTables[tableName] = true;
-            }
-            hasError = true;
-            break;
-          }
-        }
-        if (!hasError) {
-          syncSuccess = true;
-        }
-      } catch (tableNameErr) {
-        missingTables[tableName] = true;
-      }
-    }
-
-    // Try core fallback table
-    if (!syncSuccess) {
-      const mappedLocalList = Array.isArray(localList) ? localList.map((item: any) => {
-        if (!item || typeof item !== 'object') return item;
-        if (fallbackKey === 'optic_crm_customers') {
-          return mapCustomerToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_fused_catalog') {
-          return mapProductToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_saas_orders') {
-          return mapOrderToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_audit_logs') {
-          return mapAuditLogToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_my_clinic_appointments') {
-          return mapAppointmentToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_my_clinic_exams') {
-          return mapSightExamToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_my_prescriptions') {
-          return mapPrescriptionToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_hq_companies') {
-          return mapCompanyToSupabase(item, boutiqueName)?.data?.value || item;
-        } else if (fallbackKey === 'optic_hq_branches') {
-          return mapBranchToSupabase(item, boutiqueName)?.data?.value || item;
-        }
-        return item;
-      }) : localList;
-
-      let { error: upsertErr } = await supabaseClient
-        .from('opticalize_sync')
-        .upsert({
-          collection_name: fallbackKey,
-          boutique_name: boutiqueName,
-          data: { value: mappedLocalList },
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'collection_name,boutique_name'
-        });
-
-      if (upsertErr) {
-        const retryResult = await supabaseClient
-          .from('opticalize_sync')
-          .upsert({
-            collection_name: fallbackKey,
-            data: { value: mappedLocalList },
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'collection_name'
-          });
-        upsertErr = retryResult.error;
-      }
-
-      if (!upsertErr) {
-        syncSuccess = true;
-      }
-    }
-
-    if (syncSuccess) {
+    const boutiqueName = safeLocalStorage.getItem('optic_boutique_name') || 'Global';
+    const ok = await SupabaseService.syncCollection(fallbackKey, localList, boutiqueName);
+    if (ok) {
       updateSyncState({ status: 'synced', error: null, lastSyncedAt: new Date().toLocaleTimeString() });
     } else {
       updateSyncState({ status: 'error', error: `Échec d'enregistrement de ${fallbackKey}` });
@@ -677,7 +512,7 @@ export async function fetchUsers(): Promise<any[]> {
       }
     }
   } catch (e) {
-    console.error('[API] Error fetching auth users:', e);
+    console.warn('[API] Warning fetching auth users (using local cache fallback):', e);
   }
   const saved = safeLocalStorage.getItem('optic_users');
   return saved ? JSON.parse(saved) : [];
@@ -701,7 +536,7 @@ export async function saveUser(user: any): Promise<any> {
       }
     }
   } catch (e) {
-    console.error('[API] Error saving auth user:', e);
+    console.warn('[API] Warning saving auth user:', e);
   }
   return user;
 }
@@ -729,7 +564,7 @@ export async function deleteUser(emailOrId: string): Promise<boolean> {
       return !!body.success;
     }
   } catch (e) {
-    console.error('[API] Error deleting auth user:', e);
+    console.warn('[API] Warning deleting auth user:', e);
   }
   return false;
 }
@@ -752,8 +587,50 @@ function handleTableMissingError(tableName: string, error: any): boolean {
   return false;
 }
 
+export function handleJwtOrAuthError(error: any) {
+  if (!error) return;
+  const msg = String(error.message || '');
+  const code = String(error.code || '');
+  const isJwtError = code === 'PGRST301' || 
+                     msg.toLowerCase().includes('jwt') || 
+                     msg.toLowerCase().includes('expired') || 
+                     msg.toLowerCase().includes('token') || 
+                     msg.toLowerCase().includes('unauthorized');
+                     
+  if (isJwtError) {
+    console.warn('[SUPABASE] Stale or expired session/JWT detected. Clearing auth keys to prevent API blockage...');
+    if (typeof window !== 'undefined') {
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('auth-token') || key.startsWith('sb-'))) {
+            localStorage.removeItem(key);
+            console.log(`[SUPABASE] Removed stale session key: ${key}`);
+          }
+        }
+        if (supabaseClient && supabaseClient.auth) {
+          supabaseClient.auth.signOut().catch(() => {});
+        }
+      } catch (e) {
+        console.error('[SUPABASE] Error clearing expired session:', e);
+      }
+    }
+  }
+}
+
+function getLocalFallback(key: string): any[] {
+  try {
+    const val = safeLocalStorage.getItem(key);
+    if (val) {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
 export async function fetchHREmployees(): Promise<any[]> {
-  if (!supabaseClient) return [];
+  if (!supabaseClient) return getLocalFallback('optic_hr_employees');
   try {
     const { data, error } = await supabaseClient.from('employees').select('*');
     if (!error && data) {
@@ -779,14 +656,16 @@ export async function fetchHREmployees(): Promise<any[]> {
       }));
     }
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('employees', error)) {
         console.error('[API] Employees load error:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Exception loading employees:', e);
   }
-  return [];
+  return getLocalFallback('optic_hr_employees');
 }
 
 export async function saveHREmployee(emp: any): Promise<any> {
@@ -795,11 +674,13 @@ export async function saveHREmployee(emp: any): Promise<any> {
     const payload = mapEmployeeToSupabase(emp);
     const { error } = await supabaseClient.from('employees').upsert(payload);
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('employees', error)) {
         console.error('[API] Error saving employee:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Exception saving employee:', e);
   }
   return emp;
@@ -810,6 +691,7 @@ export async function deleteHREmployee(id: string): Promise<boolean> {
   try {
     const { error } = await supabaseClient.from('employees').delete().eq('id', id);
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('employees', error)) {
         console.error('[API] Error deleting employee:', error);
       }
@@ -817,13 +699,14 @@ export async function deleteHREmployee(id: string): Promise<boolean> {
     }
     return true;
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Exception deleting employee:', e);
   }
   return false;
 }
 
 export async function fetchAttendanceLedger(): Promise<any[]> {
-  if (!supabaseClient) return [];
+  if (!supabaseClient) return getLocalFallback('optic_attendance_ledger');
   try {
     const { data, error } = await supabaseClient.from('attendance').select('*');
     if (!error && data) {
@@ -845,14 +728,16 @@ export async function fetchAttendanceLedger(): Promise<any[]> {
       }));
     }
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('attendance', error)) {
         console.error('[API] Error loading attendance:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Error fetching attendance:', e);
   }
-  return [];
+  return getLocalFallback('optic_attendance_ledger');
 }
 
 export async function saveAttendanceEntry(entry: any): Promise<any> {
@@ -861,18 +746,20 @@ export async function saveAttendanceEntry(entry: any): Promise<any> {
     const payload = mapAttendanceToSupabase(entry);
     const { error } = await supabaseClient.from('attendance').upsert(payload);
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('attendance', error)) {
         console.error('[API] Error saving attendance:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Exception saving attendance:', e);
   }
   return entry;
 }
 
 export async function fetchLeaveRequests(): Promise<any[]> {
-  if (!supabaseClient) return [];
+  if (!supabaseClient) return getLocalFallback('optic_leaves');
   try {
     const { data, error } = await supabaseClient.from('leaves').select('*');
     if (!error && data) {
@@ -889,14 +776,16 @@ export async function fetchLeaveRequests(): Promise<any[]> {
       }));
     }
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('leaves', error)) {
         console.error('[API] Error loading leaves:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Error fetching leaves:', e);
   }
-  return [];
+  return getLocalFallback('optic_leaves');
 }
 
 export async function saveLeaveRequest(req: any): Promise<any> {
@@ -905,18 +794,20 @@ export async function saveLeaveRequest(req: any): Promise<any> {
     const payload = mapLeaveToSupabase(req);
     const { error } = await supabaseClient.from('leaves').upsert(payload);
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('leaves', error)) {
         console.error('[API] Error saving leave:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Exception saving leave:', e);
   }
   return req;
 }
 
 export async function fetchAdjustments(): Promise<any[]> {
-  if (!supabaseClient) return [];
+  if (!supabaseClient) return getLocalFallback('optic_adjustments');
   try {
     const { data, error } = await supabaseClient.from('adjustments').select('*');
     if (!error && data) {
@@ -932,14 +823,16 @@ export async function fetchAdjustments(): Promise<any[]> {
       }));
     }
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('adjustments', error)) {
         console.error('[API] Error loading adjustments:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Error fetching adjustments:', e);
   }
-  return [];
+  return getLocalFallback('optic_adjustments');
 }
 
 export async function saveAdjustment(adj: any): Promise<any> {
@@ -948,18 +841,20 @@ export async function saveAdjustment(adj: any): Promise<any> {
     const payload = mapAdjustmentToSupabase(adj);
     const { error } = await supabaseClient.from('adjustments').upsert(payload);
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('adjustments', error)) {
         console.error('[API] Error saving adjustment:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Exception saving adjustment:', e);
   }
   return adj;
 }
 
 export async function fetchPayslips(): Promise<any[]> {
-  if (!supabaseClient) return [];
+  if (!supabaseClient) return getLocalFallback('optic_payslips');
   try {
     const { data, error } = await supabaseClient.from('payslips').select('*');
     if (!error && data) {
@@ -985,14 +880,16 @@ export async function fetchPayslips(): Promise<any[]> {
       }));
     }
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('payslips', error)) {
         console.error('[API] Error loading payslips:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Error fetching payslips:', e);
   }
-  return [];
+  return getLocalFallback('optic_payslips');
 }
 
 export async function savePayslip(pay: any): Promise<any> {
@@ -1001,11 +898,13 @@ export async function savePayslip(pay: any): Promise<any> {
     const payload = mapPayslipToSupabase(pay);
     const { error } = await supabaseClient.from('payslips').upsert(payload);
     if (error) {
+      handleJwtOrAuthError(error);
       if (!handleTableMissingError('payslips', error)) {
         console.error('[API] Error saving payslip:', error);
       }
     }
   } catch (e) {
+    handleJwtOrAuthError(e);
     console.error('[API] Exception saving payslip:', e);
   }
   return pay;
